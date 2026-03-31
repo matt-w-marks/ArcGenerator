@@ -1,0 +1,19 @@
+# CODEOWNERS — all protected paths require review before merge
+
+# CI/CD and security pipeline
+.github/                    @MM
+
+# Docker and compose files
+docker-compose*.yml         @MM
+**/Dockerfile               @MM
+**/Dockerfile.*             @MM
+
+# Environment templates
+**/.env.example             @MM
+
+# Project governance
+CLAUDE.md                   @MM
+.pre-commit-config.yaml     @MM
+
+# Deployment manifests (Phase 9)
+manifests/                  @MM

@@ -1,0 +1,74 @@
+# Environment secrets -- NEVER commit
+.env
+.env.*
+!.env.example
+
+# Claude Code config
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Secrets and keys
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+*.jks
+*.keystore
+secrets/
+serviceaccount*.json
+*-credentials.json
+credentials.json
+token.json
+secrets.yaml
+vault-token
+.htpasswd
+
+# Cloud / infra
+terraform.tfvars
+.terraform/
+kubeconfig
+*.kubeconfig
+
+# AI assistant artifacts
+scratch_*
+debug_*
+temp_*
+*.tmp
+*.bak
+ai_generated_*
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker
+*.tar
+
+# Alembic
+# (keep migrations tracked -- do not ignore)
