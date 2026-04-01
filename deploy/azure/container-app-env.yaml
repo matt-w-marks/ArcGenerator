@@ -1,0 +1,28 @@
+# Azure Container Apps Environment
+# Deploy with:
+#   az containerapp env create --yaml deploy/azure/container-app-env.yaml \
+#     --resource-group $RESOURCE_GROUP
+#
+# Replace all <placeholder> values before deploying.
+
+location: eastus
+name: cae-roadmap-prod
+type: Microsoft.App/managedEnvironments
+
+properties:
+  # Workload profiles — Consumption tier (serverless, pay-per-use)
+  workloadProfiles:
+    - name: Consumption
+      workloadProfileType: Consumption
+
+  # VNet integration (optional — remove if not using custom VNet)
+  # vnetConfiguration:
+  #   infrastructureSubnetId: /subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>
+  #   internal: false
+
+  # Log Analytics workspace for Container Apps logs
+  appLogsConfiguration:
+    destination: log-analytics
+    logAnalyticsConfiguration:
+      customerId: <log-analytics-workspace-id>
+      sharedKey: <log-analytics-workspace-key>   # Use Key Vault reference in production

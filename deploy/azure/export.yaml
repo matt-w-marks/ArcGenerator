@@ -1,0 +1,59 @@
+# Azure Container App — Export Service
+# Internal only — no external ingress. Only the gateway reaches this service.
+
+location: eastus
+name: ca-roadmap-export
+type: Microsoft.App/containerApps
+
+properties:
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+
+  configuration:
+    activeRevisionsMode: Single
+
+    registries:
+      - server: <acr-name>.azurecr.io
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    secrets:
+      - name: metrics-database-url
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/metrics-database-url
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+      - name: logging-database-url
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/logging-database-url
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    ingress:
+      external: false
+      targetPort: 8001
+      transport: http
+
+  template:
+    containers:
+      - name: export
+        image: <acr-name>.azurecr.io/roadmap/export:1.0.0
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        env:
+          - name: DATABASE_URL
+            secretRef: metrics-database-url
+          - name: LOGGING_DATABASE_URL
+            secretRef: logging-database-url
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+    scale:
+      minReplicas: 0   # Scale to zero when idle — export is infrequent
+      maxReplicas: 2

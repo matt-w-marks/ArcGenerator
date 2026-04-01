@@ -1,0 +1,59 @@
+# Azure Container App — Frontend (nginx serving Vite PWA)
+# External ingress — this and the gateway are the only internet-facing services.
+# All API calls from the browser go to the gateway (same domain, /api prefix or
+# direct paths — configure your DNS/CDN accordingly).
+
+location: eastus
+name: ca-roadmap-frontend
+type: Microsoft.App/containerApps
+
+properties:
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+
+  configuration:
+    activeRevisionsMode: Single
+
+    registries:
+      - server: <acr-name>.azurecr.io
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    ingress:
+      external: true
+      targetPort: 80
+      transport: http
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+
+  template:
+    containers:
+      - name: frontend
+        image: <acr-name>.azurecr.io/roadmap/frontend:1.0.0
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        # No secrets — all config is baked into the static build at image build time.
+        # The frontend uses relative API paths; the gateway URL is handled by DNS/AGIC.
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "100"
