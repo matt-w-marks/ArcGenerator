@@ -54,6 +54,7 @@ build/
 .turbo/
 *.log
 npm-debug.log*
+coverage/
 
 # Python
 __pycache__/

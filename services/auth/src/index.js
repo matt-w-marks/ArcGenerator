@@ -1,14 +1,18 @@
-const express = require('express');
+const app = require('./app');
+const { migrate } = require('./db/migrate');
+const { seed } = require('./db/seed');
 
-const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(express.json());
+async function main() {
+  await migrate();
+  await seed();
+  app.listen(PORT, () => {
+    console.log(`Auth service running on :${PORT}`);
+  });
+}
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'auth' });
-});
-
-app.listen(PORT, () => {
-  console.log(`Auth service running on :${PORT}`);
+main().catch((err) => {
+  console.error('Auth service failed to start:', err.message);
+  process.exit(1);
 });
