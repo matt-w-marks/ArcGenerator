@@ -1,0 +1,16 @@
+{
+  "name": "roadmap-auth",
+  "version": "0.1.0",
+  "description": "RoadMap Dashboard Auth Service",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "express": "4.22.1"
+  }
+}

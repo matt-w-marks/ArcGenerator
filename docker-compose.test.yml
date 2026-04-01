@@ -1,0 +1,46 @@
+services:
+  db_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: roadmap_test
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d roadmap_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth_test:
+    build: ./services/auth
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql+pg://postgres:testpassword@db_test:5432/roadmap_test
+      LOGGING_DATABASE_URL: postgresql+pg://postgres:testpassword@db_test:5432/factory_logs_test
+      JWT_SECRET: test-jwt-secret-not-real
+      JWT_REFRESH_SECRET: test-jwt-refresh-secret-not-real
+    depends_on:
+      db_test:
+        condition: service_healthy
+
+  metrics_test:
+    build: ./services/metrics
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:testpassword@db_test:5432/roadmap_test
+      LOGGING_DATABASE_URL: postgresql+psycopg://postgres:testpassword@db_test:5432/factory_logs_test
+    depends_on:
+      db_test:
+        condition: service_healthy
+
+  export_test:
+    build: ./services/export
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:testpassword@db_test:5432/roadmap_test
+      LOGGING_DATABASE_URL: postgresql+psycopg://postgres:testpassword@db_test:5432/factory_logs_test
+    depends_on:
+      db_test:
+        condition: service_healthy
