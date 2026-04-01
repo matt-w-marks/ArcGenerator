@@ -1,0 +1,79 @@
+# Azure Container App — Auth Service
+# Internal only — no external ingress. Only the gateway reaches this service.
+
+location: eastus
+name: ca-roadmap-auth
+type: Microsoft.App/containerApps
+
+properties:
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+
+  configuration:
+    activeRevisionsMode: Single
+
+    registries:
+      - server: <acr-name>.azurecr.io
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    secrets:
+      - name: auth-database-url
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/auth-database-url
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+      - name: logging-database-url
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/logging-database-url
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+      - name: jwt-secret
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/jwt-secret
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+      - name: admin-email
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/admin-email
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+      - name: admin-password
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/admin-password
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    # Internal ingress only — not reachable from the internet
+    ingress:
+      external: false
+      targetPort: 3001
+      transport: http
+
+  template:
+    containers:
+      - name: auth
+        image: <acr-name>.azurecr.io/roadmap/auth:1.0.0
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: PORT
+            value: "3001"
+          - name: DATABASE_URL
+            secretRef: auth-database-url
+          - name: LOGGING_DATABASE_URL
+            secretRef: logging-database-url
+          - name: JWT_SECRET
+            secretRef: jwt-secret
+          - name: ADMIN_EMAIL
+            secretRef: admin-email
+          - name: ADMIN_PASSWORD
+            secretRef: admin-password
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+    scale:
+      minReplicas: 1
+      maxReplicas: 3

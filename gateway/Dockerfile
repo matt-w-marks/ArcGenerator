@@ -1,13 +1,22 @@
-FROM node:20-alpine
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM node:20.19.1-alpine3.21 AS deps
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 
-COPY src/ ./src/
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM node:20.19.1-alpine3.21 AS runtime
 
-# node:alpine ships with a non-root 'node' user
+WORKDIR /app
+
+RUN chown node:node /app
+
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json ./
+COPY --chown=node:node src/ ./src/
+
 USER node
 
 EXPOSE 3000

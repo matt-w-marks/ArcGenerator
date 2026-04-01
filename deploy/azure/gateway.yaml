@@ -1,0 +1,82 @@
+# Azure Container App — Gateway
+# Deploy with:
+#   az containerapp create --yaml deploy/azure/gateway.yaml \
+#     --resource-group $RESOURCE_GROUP
+#
+# Secrets are resolved at deploy time from Azure Key Vault via the managed identity.
+# No secret values appear in this file.
+
+location: eastus
+name: ca-roadmap-gateway
+type: Microsoft.App/containerApps
+
+properties:
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+
+  configuration:
+    activeRevisionsMode: Single
+
+    # ACR access via managed identity — no registry credentials in manifests
+    registries:
+      - server: <acr-name>.azurecr.io
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    # Secrets resolved from Key Vault at deploy time
+    secrets:
+      - name: jwt-secret
+        keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/jwt-secret
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+
+    # Gateway is the only externally-facing service (besides frontend)
+    ingress:
+      external: true
+      targetPort: 3000
+      transport: http
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+
+  template:
+    containers:
+      - name: gateway
+        image: <acr-name>.azurecr.io/roadmap/gateway:1.0.0
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: PORT
+            value: "3000"
+          - name: JWT_SECRET
+            secretRef: jwt-secret
+          # Internal Container Apps service discovery FQDNs
+          - name: AUTH_SERVICE_URL
+            value: https://ca-roadmap-auth.internal.<aca-env-default-domain>
+          - name: METRICS_SERVICE_URL
+            value: https://ca-roadmap-metrics.internal.<aca-env-default-domain>
+          - name: EXPORT_SERVICE_URL
+            value: https://ca-roadmap-export.internal.<aca-env-default-domain>
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "50"
