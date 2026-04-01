@@ -1,0 +1,11 @@
+[run]
+omit =
+    tests/*
+    */site-packages/*
+
+[report]
+fail_under = 80
+
+[coverage:paths]
+source =
+    .
