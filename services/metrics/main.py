@@ -1,6 +1,35 @@
-from fastapi import FastAPI
+import os
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Metrics Service")
+from alembic import command
+from alembic.config import Config
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from routers import driving_sessions, financial_snapshots, job_activities, weekly_rollups
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Skip migrations during test runs (pytest sets PYTEST_CURRENT_TEST automatically)
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+    yield
+
+
+app = FastAPI(title="Metrics Service", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
+
+app.include_router(driving_sessions.router)
+app.include_router(job_activities.router)
+app.include_router(financial_snapshots.router)
+app.include_router(weekly_rollups.router)
 
 
 @app.get("/health")
