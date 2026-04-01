@@ -5,12 +5,35 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "jest --forceExit",
+    "test:coverage": "jest --coverage --forceExit"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "express": "4.22.1"
+    "express": "4.22.1",
+    "express-rate-limit": "7.3.1",
+    "helmet": "7.1.0",
+    "http-proxy-middleware": "3.0.5",
+    "jsonwebtoken": "9.0.2"
+  },
+  "devDependencies": {
+    "jest": "29.7.0",
+    "supertest": "7.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.js"],
+    "collectCoverageFrom": ["src/**/*.js"],
+    "coverageThreshold": {
+      "src/middleware/authenticate.js": {
+        "lines": 100,
+        "branches": 100,
+        "functions": 100,
+        "statements": 100
+      }
+    }
   }
 }
