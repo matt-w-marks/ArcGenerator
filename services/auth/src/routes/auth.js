@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const authService = require('../services/authService');
+const { logEvent } = require('../services/factoryLog');
 
 const router = express.Router();
 
@@ -17,10 +18,12 @@ router.post('/login', async (req, res, next) => {
 
     const user = await User.findOne({ where: { email } });
     if (!user) {
+      logEvent('WARN', 'login failed — user not found', { email });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     if (authService.isAccountLocked(user)) {
+      logEvent('WARN', 'login rejected — account locked', { userId: user.id });
       return res.status(403).json({ error: 'Account is locked. Try again later.' });
     }
 
@@ -30,12 +33,16 @@ router.post('/login', async (req, res, next) => {
       const update = { failed_attempts: newAttempts };
       if (newAttempts >= authService.MAX_FAILED_ATTEMPTS) {
         update.locked_until = authService.getLockoutUntil();
+        logEvent('WARN', 'account locked after repeated failures', { userId: user.id, attempts: newAttempts });
+      } else {
+        logEvent('WARN', 'login failed — wrong password', { userId: user.id, attempts: newAttempts });
       }
       await user.update(update);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     await user.update({ failed_attempts: 0, locked_until: null });
+    logEvent('INFO', 'login successful', { userId: user.id });
 
     const accessToken = authService.generateAccessToken(user.id, user.role);
     const refreshTokenValue = authService.generateRefreshTokenValue();
@@ -72,8 +79,11 @@ router.post('/refresh', async (req, res, next) => {
 
     const user = await User.findByPk(stored.user_id);
     if (!user) {
+      logEvent('WARN', 'token refresh failed — user not found', { userId: stored.user_id });
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
+
+    logEvent('INFO', 'token refreshed', { userId: user.id });
 
     const accessToken = authService.generateAccessToken(user.id, user.role);
     const newRefreshTokenValue = authService.generateRefreshTokenValue();
