@@ -1,0 +1,226 @@
+/* ── Fonts ─────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* ── Tailwind v4 ───────────────────────────────────────────────────────────── */
+@import "tailwindcss";
+
+/* ── Arc Theme Tokens ─────────────────────────────────────────────────────── */
+@theme {
+  /* Obsidian depth scale */
+  --color-obsidian-950: #0A0E14;
+  --color-obsidian-900: #0F141C;
+  --color-obsidian-800: #141B26;
+  --color-obsidian-700: #1E2530;
+  --color-obsidian-600: #2A3342;
+
+  /* Arc — electric cyan */
+  --color-arc:        #00D4FF;
+  --color-arc-bright: #00E5FF;
+  --color-arc-dim:    #0099CC;
+
+  /* Ember — warm gold */
+  --color-ember:        #FFB020;
+  --color-ember-bright: #FFC44D;
+  --color-ember-dim:    #CC8F1A;
+
+  /* Neural — violet */
+  --color-neural:        #8B5CF6;
+  --color-neural-bright: #A78BFA;
+  --color-neural-dim:    #7C3AED;
+
+  /* Semantic */
+  --color-success: #10B981;
+  --color-error:   #EF4444;
+
+  /* Ink — text scale (matches ArcForge slate) */
+  --color-ink-50:  #E8EAED;
+  --color-ink-200: #9CA3AF;
+  --color-ink-300: #6B7280;
+  --color-ink-400: #4B5563;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    color-scheme: dark;
+    @apply scroll-smooth;
+  }
+
+  body {
+    background-color: #0A0E14;
+    color: #E8EAED;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Forge dot-grid background */
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      rgba(232, 234, 237, 0.05) 1px,
+      transparent 0
+    );
+    background-size: 32px 32px;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  code, pre, kbd {
+    font-family: "JetBrains Mono", Consolas, monospace;
+  }
+
+  ::selection {
+    background-color: rgba(0, 212, 255, 0.25);
+    color: #E8EAED;
+  }
+
+  ::-webkit-scrollbar        { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { background: #0F141C; }
+  ::-webkit-scrollbar-thumb  { background: #2A3342; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #0099CC; }
+}
+
+/* ── Components ────────────────────────────────────────────────────────────── */
+@layer components {
+  .font-display {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+  }
+
+  /* Metal card — industrial surface */
+  .metal-card {
+    background-color: #1E2530;
+    border: 1px solid #2A3342;
+    border-radius: 0.5rem;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    background-image: linear-gradient(
+      135deg,
+      rgba(232, 234, 237, 0.02) 0%,
+      transparent 50%
+    );
+  }
+  .metal-card:hover {
+    border-color: rgba(0, 212, 255, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transform: translateY(-1px);
+  }
+
+  /* Glow effects */
+  .arc-glow {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.15);
+  }
+  .arc-glow-text {
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+  }
+  .ember-glow {
+    box-shadow: 0 0 20px rgba(255, 176, 32, 0.3), 0 0 40px rgba(255, 176, 32, 0.15);
+  }
+  .neural-glow {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.15);
+  }
+
+  /* Glass morphism */
+  .glass {
+    backdrop-filter: blur(10px);
+    background-color: rgba(30, 37, 48, 0.75);
+    border: 1px solid rgba(232, 234, 237, 0.1);
+  }
+
+  /* Forge grid accent */
+  .forge-grid {
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      rgba(0, 212, 255, 0.08) 1px,
+      transparent 0
+    );
+    background-size: 32px 32px;
+  }
+
+  /* Input field */
+  .arc-input {
+    @apply w-full px-3 py-2 rounded-lg text-sm outline-none transition-all;
+    background-color: #141B26;
+    border: 1px solid #2A3342;
+    color: #E8EAED;
+  }
+  .arc-input::placeholder { color: #4B5563; }
+  .arc-input:focus {
+    border-color: #00D4FF;
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.15);
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all;
+    background-color: #00D4FF;
+    color: #0A0E14;
+  }
+  .btn-primary:hover {
+    background-color: #00E5FF;
+    box-shadow: 0 0 16px rgba(0, 212, 255, 0.4);
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all;
+    color: #9CA3AF;
+    border: 1px solid #2A3342;
+    background-color: transparent;
+  }
+  .btn-ghost:hover {
+    color: #E8EAED;
+    border-color: #00D4FF;
+    background-color: rgba(0, 212, 255, 0.05);
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all;
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #EF4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .btn-danger:hover { background-color: rgba(239, 68, 68, 0.25); }
+
+  /* Stat card — inlined metal-card + p-5 (Tailwind v4 forbids @apply on component classes) */
+  .stat-card {
+    background-color: #1E2530;
+    border: 1px solid #2A3342;
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    background-image: linear-gradient(135deg, rgba(232, 234, 237, 0.02) 0%, transparent 50%);
+  }
+  .stat-card:hover {
+    border-color: rgba(0, 212, 255, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transform: translateY(-1px);
+  }
+
+  /* Page title */
+  .page-title {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #E8EAED;
+    letter-spacing: -0.02em;
+  }
+
+  /* Section label */
+  .section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #4B5563;
+  }
+}
