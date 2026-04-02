@@ -1,7 +1,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const authenticate = require('./middleware/authenticate');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -63,6 +63,7 @@ app.use(
     target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
     changeOrigin: true,
     pathRewrite: (path) => `/auth${path}`,
+    on: { proxyReq: fixRequestBody },
   })
 );
 
@@ -73,7 +74,7 @@ app.use(
   createProxyMiddleware({
     target: process.env.METRICS_SERVICE_URL || 'http://metrics:8000',
     changeOrigin: true,
-    on: { proxyReq: injectUserHeaders },
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
   })
 );
 
@@ -84,7 +85,7 @@ app.use(
   createProxyMiddleware({
     target: process.env.EXPORT_SERVICE_URL || 'http://export:8001',
     changeOrigin: true,
-    on: { proxyReq: injectUserHeaders },
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
   })
 );
 

@@ -8,15 +8,39 @@ import {
   LogOut,
   ChevronRight,
   Map,
+  CalendarDays,
+  Database,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
-const NAV_ITEMS = [
-  { to: '/',         label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/driving',  label: 'Driving',   icon: Car },
-  { to: '/jobs',     label: 'Jobs',      icon: Briefcase },
-  { to: '/finances', label: 'Finances',  icon: DollarSign },
+const NAV_SECTIONS = [
+  {
+    label: null,
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/schedule', label: 'Schedule', icon: CalendarDays },
+    ],
+  },
+  {
+    label: 'Revenue',
+    items: [
+      { to: '/driving', label: 'Driving', icon: Car },
+      { to: '/jobs',    label: 'Contract Work', icon: Briefcase },
+    ],
+  },
+  {
+    label: 'Financial',
+    items: [
+      { to: '/finances', label: 'Finances', icon: DollarSign },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { to: '/data', label: 'Data', icon: Database },
+    ],
+  },
 ];
 
 function NavItem({ to, label, icon: Icon, end }) {
@@ -73,10 +97,18 @@ export default function Sidebar({ onClose }) {
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        <p className="section-label px-3 mb-2">Main</p>
-        {NAV_ITEMS.map((item) => (
-          <NavItem key={item.to} {...item} />
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {NAV_SECTIONS.map((section, i) => (
+          <div key={i} className={i > 0 ? 'mt-4' : ''}>
+            {section.label && (
+              <p className="section-label px-3 mb-1">{section.label}</p>
+            )}
+            <div className="space-y-1">
+              {section.items.map((item) => (
+                <NavItem key={item.to} {...item} />
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 

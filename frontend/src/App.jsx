@@ -6,6 +6,8 @@ import DashboardPage from './pages/DashboardPage';
 import DrivingPage from './pages/DrivingPage';
 import JobsPage from './pages/JobsPage';
 import FinancesPage from './pages/FinancesPage';
+import SchedulePage from './pages/SchedulePage';
+import DataPage from './pages/DataPage';
 
 function ProtectedRoutes() {
   const { isAuthenticated, loading } = useAuth();
@@ -49,6 +51,8 @@ export default function App() {
             <Route path="/driving" element={<DrivingPage />} />
             <Route path="/jobs" element={<JobsPage />} />
             <Route path="/finances" element={<FinancesPage />} />
+            <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/data" element={<DataPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

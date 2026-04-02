@@ -15,12 +15,12 @@ from schemas.weekly_rollup import (
 router = APIRouter(prefix="/weekly-rollups", tags=["weekly-rollups"])
 
 
-@router.get("/", response_model=list[WeeklyRollupResponse])
+@router.get("", response_model=list[WeeklyRollupResponse])
 def list_rollups(db: Session = Depends(get_db)):
     return db.query(WeeklyRollup).order_by(WeeklyRollup.week_start.desc()).all()
 
 
-@router.post("/", response_model=WeeklyRollupResponse, status_code=201)
+@router.post("", response_model=WeeklyRollupResponse, status_code=201)
 def create_rollup(body: WeeklyRollupCreate, db: Session = Depends(get_db)):
     rollup = WeeklyRollup(**body.model_dump())
     db.add(rollup)

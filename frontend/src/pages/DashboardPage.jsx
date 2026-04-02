@@ -41,7 +41,7 @@ export default function DashboardPage() {
         const snapshots = snapRes.ok  ? await snapRes.json()  : [];
 
         const totalEarnings = sessions.reduce((s, r) => s + Number(r.gross_earnings), 0);
-        const totalHours    = sessions.reduce((s, r) => s + Number(r.hours_worked), 0);
+        const totalHours    = sessions.reduce((s, r) => s + Number(r.duration_hours ?? 0), 0);
         const totalTrips    = sessions.reduce((s, r) => s + Number(r.trip_count), 0);
         const activeApps    = jobs.filter((j) => j.status === 'applied' || j.status === 'interview').length;
         const latestSnap    = snapshots[0];
@@ -83,7 +83,7 @@ export default function DashboardPage() {
           color="ember"
           label="Total Trips"
           value={stats ? stats.totalTrips.toLocaleString() : '—'}
-          sub={stats ? `${stats.totalHours > 0 ? round1(stats.totalTrips / stats.totalHours) : 0} trips/hr avg` : undefined}
+          sub={stats ? (stats.totalHours > 0 ? `${round1(stats.totalTrips / stats.totalHours)} trips/hr avg` : undefined) : undefined}
         />
         <StatCard
           icon={Briefcase}

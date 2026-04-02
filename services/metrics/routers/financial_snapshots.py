@@ -15,12 +15,12 @@ from schemas.financial_snapshot import (
 router = APIRouter(prefix="/financial-snapshots", tags=["financial-snapshots"])
 
 
-@router.get("/", response_model=list[FinancialSnapshotResponse])
+@router.get("", response_model=list[FinancialSnapshotResponse])
 def list_snapshots(db: Session = Depends(get_db)):
     return db.query(FinancialSnapshot).order_by(FinancialSnapshot.date.desc()).all()
 
 
-@router.post("/", response_model=FinancialSnapshotResponse, status_code=201)
+@router.post("", response_model=FinancialSnapshotResponse, status_code=201)
 def create_snapshot(body: FinancialSnapshotCreate, db: Session = Depends(get_db)):
     snapshot = FinancialSnapshot(**body.model_dump())
     db.add(snapshot)

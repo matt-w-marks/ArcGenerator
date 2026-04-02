@@ -3,12 +3,12 @@ FROM node:20.19.1-alpine3.21 AS build
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 
-COPY index.html vite.config.js ./
-COPY public/  ./public/
-COPY src/     ./src/
+COPY frontend/index.html frontend/vite.config.js ./
+COPY frontend/public/  ./public/
+COPY frontend/src/     ./src/
 
 # GATEWAY_URL is the internal Container Apps URL for the gateway service.
 # Set at build time so the Vite proxy config is baked in; the production build

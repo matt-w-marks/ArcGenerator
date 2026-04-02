@@ -1,28 +1,31 @@
 import datetime
-from datetime import date, datetime as dt
+from datetime import date, datetime as dt, time
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class DrivingSessionCreate(BaseModel):
     date: date
-    hours_worked: Decimal = Field(gt=Decimal("0"))
     gross_earnings: Decimal = Field(ge=Decimal("0"))
-    gas_cost: Decimal = Field(ge=Decimal("0"), default=Decimal("0"))
     trip_count: int = Field(ge=0, default=0)
-    zone: str | None = Field(default=None, max_length=128)
+    zone_id: UUID | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    odometer_start: Decimal | None = Field(default=None, ge=Decimal("0"))
+    odometer_end: Decimal | None = Field(default=None, ge=Decimal("0"))
 
 
 class DrivingSessionUpdate(BaseModel):
-    # Use datetime.date (qualified) to avoid field-name-shadows-type on Python 3.14
     date: datetime.date | None = None
-    hours_worked: Decimal | None = Field(default=None, gt=Decimal("0"))
     gross_earnings: Decimal | None = Field(default=None, ge=Decimal("0"))
-    gas_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
     trip_count: int | None = Field(default=None, ge=0)
-    zone: str | None = Field(default=None, max_length=128)
+    zone_id: UUID | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    odometer_start: Decimal | None = Field(default=None, ge=Decimal("0"))
+    odometer_end: Decimal | None = Field(default=None, ge=Decimal("0"))
 
 
 class DrivingSessionResponse(BaseModel):
@@ -30,10 +33,31 @@ class DrivingSessionResponse(BaseModel):
 
     id: UUID
     date: datetime.date
-    hours_worked: Decimal
     gross_earnings: Decimal
-    gas_cost: Decimal
     trip_count: int
-    zone: str | None
+    zone_id: UUID | None
+    zone_name: str | None  # populated from zone_rel.name via model property
+    start_time: time | None
+    end_time: time | None
+    odometer_start: Decimal | None
+    odometer_end: Decimal | None
     created_at: dt
     updated_at: dt
+
+    @computed_field
+    @property
+    def duration_hours(self) -> float | None:
+        if self.start_time and self.end_time:
+            start = dt.combine(datetime.date.min, self.start_time)
+            end   = dt.combine(datetime.date.min, self.end_time)
+            delta = (end - start).total_seconds()
+            return round(delta / 3600, 2) if delta > 0 else None
+        return None
+
+    @computed_field
+    @property
+    def miles_driven(self) -> float | None:
+        if self.odometer_start is not None and self.odometer_end is not None:
+            diff = float(self.odometer_end) - float(self.odometer_start)
+            return round(diff, 1) if diff >= 0 else None
+        return None

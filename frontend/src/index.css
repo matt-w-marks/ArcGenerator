@@ -34,9 +34,12 @@
 
   /* Ink — text scale (matches ArcForge slate) */
   --color-ink-50:  #E8EAED;
+  --color-ink-100: #C4CAD4;
   --color-ink-200: #9CA3AF;
   --color-ink-300: #6B7280;
   --color-ink-400: #4B5563;
+  --color-ink-500: #374151;
+  --color-ink-600: #2D3748;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────────── */
@@ -147,11 +150,24 @@
     background-color: #141B26;
     border: 1px solid #2A3342;
     color: #E8EAED;
+    -webkit-text-fill-color: #E8EAED;
+    color-scheme: dark;
   }
-  .arc-input::placeholder { color: #4B5563; }
+  .arc-input::placeholder { color: #6B7280; }
   .arc-input:focus {
     border-color: #00D4FF;
     box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.15);
+  }
+  /* Keep number spin buttons visible */
+  .arc-input[type="number"]::-webkit-inner-spin-button,
+  .arc-input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+  }
+  /* Tint the date/time picker calendar icon to match theme */
+  .arc-input[type="date"]::-webkit-calendar-picker-indicator,
+  .arc-input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
   }
 
   /* Primary button */

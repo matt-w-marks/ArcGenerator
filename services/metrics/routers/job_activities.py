@@ -15,12 +15,12 @@ from schemas.job_activity import (
 router = APIRouter(prefix="/job-activities", tags=["job-activities"])
 
 
-@router.get("/", response_model=list[JobActivityResponse])
+@router.get("", response_model=list[JobActivityResponse])
 def list_activities(db: Session = Depends(get_db)):
     return db.query(JobActivity).order_by(JobActivity.date.desc()).all()
 
 
-@router.post("/", response_model=JobActivityResponse, status_code=201)
+@router.post("", response_model=JobActivityResponse, status_code=201)
 def create_activity(body: JobActivityCreate, db: Session = Depends(get_db)):
     activity = JobActivity(**body.model_dump())
     db.add(activity)
