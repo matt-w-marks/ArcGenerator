@@ -10,7 +10,9 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  format, addDays, startOfWeek, isToday, isSameDay, addWeeks, subWeeks,
+  format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
+  isToday, isSameDay, isSameMonth, addMonths, subMonths,
+  eachDayOfInterval, addWeeks, subWeeks,
 } from 'date-fns';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2,
@@ -295,74 +297,117 @@ function TimelineBlock({ block, anchorRank, onDelete, onResize, onEdit }) {
   );
 }
 
-// ── Week strip (assignment view) ──────────────────────────────────────────────
+// ── Month calendar popout ─────────────────────────────────────────────────────
 
-function WeekStrip({ weekStart, onWeekChange, assignedDates, onToggleDate, schedules, calendarEntries, weekLogs, disabled }) {
-  const days = weekDays(weekStart);
+function MonthCalendar({ month, onMonthChange, calendarEntries, schedules, activeId, onToggleDate, disabled }) {
+  const monthStart = startOfMonth(month);
+  const gridStart  = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const gridEnd    = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
+  const gridDays   = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
-  // Build a map: dateStr → {preTime, postTime} from weekLogs
-  function getLogTimes(ds) {
-    // Find which schedule is on this day
-    const entry = calendarEntries.find((e) => e.entry_date === ds);
-    if (!entry) return { preTime: null, postTime: null };
-    const sched = schedules.find((s) => s.id === entry.schedule_id);
-    if (!sched) return { preTime: null, postTime: null };
+  // Map date → calendar entry (with schedule_name, schedule_color)
+  const entryMap = {};
+  for (const e of calendarEntries) {
+    entryMap[e.entry_date] = e;
+  }
 
-    function logTime(checklistId) {
-      if (!checklistId) return null;
-      const log = weekLogs.find((l) => l.checklist_id === checklistId && l.log_date === ds);
-      if (!log) return null;
-      return new Date(log.completed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    }
-
-    return {
-      preTime:  logTime(sched.pre_day_checklist_id),
-      postTime: logTime(sched.post_day_checklist_id),
-    };
+  // Unique schedules that appear on the calendar this month (for legend)
+  const legendScheds = [];
+  const seen = new Set();
+  for (const e of calendarEntries) {
+    if (seen.has(e.schedule_id)) continue;
+    seen.add(e.schedule_id);
+    legendScheds.push({ id: e.schedule_id, name: e.schedule_name, color: e.schedule_color || '#6b7280' });
   }
 
   return (
-    <div className="flex items-center gap-1 metal-card px-4 py-2">
-      <button type="button" onClick={() => onWeekChange(-1)} className="p-1 text-ink-400 hover:text-ink-50 transition-colors">
-        <ChevronLeft size={14} />
-      </button>
-      <div className="flex flex-1 gap-1">
-        {days.map((day) => {
-          const ds       = toDateStr(day);
-          const assigned = assignedDates.has(ds);
-          const today    = isToday(day);
-          const { preTime, postTime } = getLogTimes(ds);
+    <div className="metal-card p-4 w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <button type="button" onClick={() => onMonthChange(-1)} className="p-1 text-ink-400 hover:text-ink-50 transition-colors">
+          <ChevronLeft size={16} />
+        </button>
+        <span className="text-sm font-semibold text-ink-100">{format(month, 'MMMM yyyy')}</span>
+        <button type="button" onClick={() => onMonthChange(1)} className="p-1 text-ink-400 hover:text-ink-50 transition-colors">
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+          <div key={d} className="text-center text-[10px] text-ink-500 uppercase tracking-wide py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-7 gap-px">
+        {gridDays.map((day) => {
+          const ds      = toDateStr(day);
+          const inMonth = isSameMonth(day, month);
+          const today   = isToday(day);
+          const entry   = entryMap[ds];
+          const color   = entry?.schedule_color || null;
+          const isActive = entry?.schedule_id === activeId;  // assigned to currently selected schedule
+
           return (
             <button
               key={ds}
               type="button"
-              disabled={disabled}
-              onClick={() => onToggleDate(day, assigned)}
-              title={disabled ? 'Select a schedule first' : assigned ? 'Remove from this day' : 'Assign to this day'}
-              className={`flex-1 flex flex-col items-center py-1 rounded-lg transition-all ${
-                disabled
+              disabled={disabled || !inMonth}
+              onClick={() => inMonth && onToggleDate(day, !!entry)}
+              title={
+                !inMonth ? '' :
+                disabled ? 'Select a schedule first' :
+                entry ? `${entry.schedule_name}${isActive ? ' (selected)' : ''} — click to reassign/remove` :
+                'Click to assign selected schedule'
+              }
+              className={`relative flex flex-col items-center py-1 px-0.5 rounded transition-all min-h-[48px] ${
+                !inMonth
+                  ? 'text-ink-700 cursor-default'
+                  : disabled
                   ? 'text-ink-600 cursor-not-allowed opacity-40'
-                  : assigned
-                  ? 'bg-arc/15 text-arc ring-1 ring-arc/30'
+                  : entry
+                  ? 'hover:brightness-125'
                   : today
-                  ? 'text-ink-50 bg-obsidian-700 hover:bg-arc/10 hover:text-arc'
+                  ? 'text-ink-50 bg-obsidian-700 hover:bg-obsidian-600'
                   : 'text-ink-400 hover:text-ink-200 hover:bg-obsidian-700/50'
               }`}
+              style={inMonth && color ? {
+                backgroundColor: hexToRgba(color, 0.15),
+                borderLeft: `3px solid ${color}`,
+              } : undefined}
             >
-              <span className="text-[10px] uppercase tracking-wide">{format(day, 'EEE')}</span>
-              <span className="text-sm font-semibold">{format(day, 'd')}</span>
-              <div className="mt-0.5 flex flex-col items-center gap-px" style={{ minHeight: 28 }}>
-                {assigned && <Check size={10} className="text-arc" />}
-                {preTime  && <span className="text-[8px] text-success leading-none font-mono">▲{preTime}</span>}
-                {postTime && <span className="text-[8px] text-success leading-none font-mono">▼{postTime}</span>}
-              </div>
+              <span className={`text-xs font-medium ${today && !entry ? 'text-arc font-bold' : ''}`} style={entry && color ? { color } : undefined}>
+                {format(day, 'd')}
+              </span>
+              {inMonth && entry && (
+                <span
+                  className="text-[7px] leading-tight truncate w-full text-center mt-0.5"
+                  style={{ color: hexToRgba(color || '#6b7280', 0.8) }}
+                >
+                  {entry.schedule_name?.length > 8 ? entry.schedule_name.slice(0, 7) + '…' : entry.schedule_name}
+                </span>
+              )}
+              {inMonth && isActive && (
+                <Check size={8} style={{ color }} className="mt-0.5" />
+              )}
             </button>
           );
         })}
       </div>
-      <button type="button" onClick={() => onWeekChange(1)} className="p-1 text-ink-400 hover:text-ink-50 transition-colors">
-        <ChevronRight size={14} />
-      </button>
+
+      {/* Legend — shows all schedules that appear this month */}
+      {legendScheds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mt-3 pt-2 border-t border-obsidian-700/50">
+          {legendScheds.map((s) => (
+            <div key={s.id} className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded" style={{ backgroundColor: hexToRgba(s.color, 0.3), borderLeft: `2px solid ${s.color}` }} />
+              <span className="text-[10px] text-ink-400">{s.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -471,6 +516,7 @@ function SchedulePicker({ schedules, activeId, onChange, onNew }) {
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 px-3 py-2 rounded-lg bg-obsidian-800 border border-obsidian-600 text-sm text-ink-100 hover:border-obsidian-500 transition-colors min-w-48 max-w-64"
       >
+        {active && <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: active.color || '#6b7280' }} />}
         <span className="flex-1 text-left truncate">
           {active ? active.name : <span className="text-ink-400">Select a schedule…</span>}
         </span>
@@ -494,6 +540,7 @@ function SchedulePicker({ schedules, activeId, onChange, onNew }) {
                     : 'text-ink-200 hover:bg-obsidian-700'
                 }`}
               >
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.color || '#6b7280' }} />
                 {s.id === activeId && <Check size={12} className="shrink-0" />}
                 <span className="flex-1 truncate">{s.name}</span>
                 {s.description && (
@@ -720,7 +767,8 @@ export default function SchedulePage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [weekStart,       setWeekStart]       = useState(() => startOfWeek(today, { weekStartsOn: 1 }));
+  const [calMonth,        setCalMonth]        = useState(() => startOfMonth(today));
+  const [showCalendar,    setShowCalendar]    = useState(false);
   const [schedules,       setSchedules]       = useState([]);
   const [activeId,        setActiveId]        = useState(null);
   const [blocks,          setBlocks]          = useState([]);
@@ -729,7 +777,6 @@ export default function SchedulePage() {
   const [allChecklists,   setAllChecklists]   = useState([]);
   const [assignedDates,   setAssignedDates]   = useState(new Set());
   const [calendarEntries, setCalendarEntries] = useState([]);  // all entries for visible month
-  const [weekLogs,        setWeekLogs]        = useState([]);  // checklist logs for the visible week
   const [activeDrag,      setActiveDrag]      = useState(null);
   const [resizeMap,       setResizeMap]       = useState({});
   const [showNew,         setShowNew]         = useState(false);
@@ -777,10 +824,9 @@ export default function SchedulePage() {
     }
   }, []);
 
-  // Load which days in the current week are assigned to the active schedule
-  const loadAssignedDates = useCallback(async (schedId, ws) => {
-    const days = weekDays(ws);
-    const monthStr = format(days[0], 'yyyy-MM');
+  // Load which days in the current month are assigned to the active schedule
+  const loadAssignedDates = useCallback(async (schedId, month) => {
+    const monthStr = format(month, 'yyyy-MM');
     const r = await api.get(`/metrics/schedule/calendar?month=${monthStr}`);
     if (r.ok) {
       const entries = await r.json();
@@ -792,18 +838,6 @@ export default function SchedulePage() {
       } else {
         setAssignedDates(new Set());
       }
-    }
-  }, []);
-
-  const loadWeekLogs = useCallback(async (ws) => {
-    const days = weekDays(ws);
-    const from = toDateStr(days[0]);
-    const to   = toDateStr(days[6]);
-    // Fetch logs for the week via date range (use limit=50, filter client-side)
-    const r = await api.get(`/metrics/maintenance/checklist-logs?limit=50`);
-    if (r.ok) {
-      const logs = await r.json();
-      setWeekLogs(logs.filter((l) => l.log_date >= from && l.log_date <= to));
     }
   }, []);
 
@@ -821,33 +855,43 @@ export default function SchedulePage() {
   }, [activeId, loadBlocks]);
 
   useEffect(() => {
-    loadAssignedDates(activeId, weekStart);
-    loadWeekLogs(weekStart);
-  }, [activeId, weekStart, loadAssignedDates, loadWeekLogs]);
+    loadAssignedDates(activeId, calMonth);
+  }, [activeId, calMonth, loadAssignedDates]);
 
-  // ── Week navigation ───────────────────────────────────────────────────────
+  // ── Month navigation ──────────────────────────────────────────────────────
 
-  function handleWeekChange(dir) {
-    setWeekStart((ws) => dir > 0 ? addWeeks(ws, 1) : subWeeks(ws, 1));
+  function handleMonthChange(dir) {
+    setCalMonth((m) => dir > 0 ? addMonths(m, 1) : subMonths(m, 1));
   }
 
   // ── Calendar assignment ───────────────────────────────────────────────────
 
-  async function handleToggleDate(day, isAssigned) {
+  async function handleToggleDate(day, hasEntry) {
     if (!activeId) return;
     const ds = toDateStr(day);
-    if (isAssigned) {
+    const existing = calendarEntries.find((e) => e.entry_date === ds);
+    const isOurs = existing?.schedule_id === activeId;
+
+    if (isOurs) {
+      // Remove — unassign the active schedule from this day
       const r = await api.delete(`/metrics/schedule/calendar/${ds}`);
       if (r.ok || r.status === 404) {
         setAssignedDates((prev) => { const n = new Set(prev); n.delete(ds); return n; });
+        setCalendarEntries((prev) => prev.filter((e) => e.entry_date !== ds));
       }
     } else {
+      // Assign (or reassign) — PUT upserts
       const r = await api.put(`/metrics/schedule/calendar/${ds}`, { schedule_id: activeId });
       if (r.ok) {
         setAssignedDates((prev) => new Set([...prev, ds]));
         setCalendarEntries((prev) => {
           const without = prev.filter((e) => e.entry_date !== ds);
-          return [...without, { entry_date: ds, schedule_id: activeId, schedule_name: activeSchedule?.name }];
+          return [...without, {
+            entry_date: ds,
+            schedule_id: activeId,
+            schedule_name: activeSchedule?.name,
+            schedule_color: activeSchedule?.color,
+          }];
         });
       } else {
         const body = await r.json().catch(() => ({}));
@@ -1013,14 +1057,32 @@ export default function SchedulePage() {
               onNew={() => setShowNew(true)}
             />
             {activeId && (
-              <button
-                type="button"
-                onClick={handleDeleteSchedule}
-                title="Delete this schedule"
-                className="p-2 rounded-lg text-ink-400 hover:text-error hover:bg-error/10 transition-colors"
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                <input
+                  type="color"
+                  title="Schedule color — pick then close to save"
+                  className="w-7 h-7 rounded cursor-pointer border border-obsidian-600 bg-transparent"
+                  defaultValue={activeSchedule?.color || '#6b7280'}
+                  key={activeSchedule?.color}
+                  onBlur={(e) => {
+                    if (e.target.value !== (activeSchedule?.color || '#6b7280')) {
+                      handleChecklistAssign('color', e.target.value);
+                    }
+                  }}
+                  onChange={(e) => {
+                    clearTimeout(window._colorTimer);
+                    window._colorTimer = setTimeout(() => handleChecklistAssign('color', e.target.value), 500);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleDeleteSchedule}
+                  title="Delete this schedule"
+                  className="p-2 rounded-lg text-ink-400 hover:text-error hover:bg-error/10 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             )}
             {activeId && (
               <>
@@ -1055,23 +1117,42 @@ export default function SchedulePage() {
           </div>
         </div>
 
-        {/* Week strip — click day to assign/unassign this schedule */}
-        <div className="space-y-1">
-          <p className="text-[10px] text-ink-500 px-1">
-            {activeSchedule
-              ? <>Click a day to assign <span className="text-ink-300">{activeSchedule.name}</span> to it</>
-              : 'Select a schedule above to assign it to days'}
-          </p>
-          <WeekStrip
-            weekStart={weekStart}
-            onWeekChange={handleWeekChange}
-            assignedDates={assignedDates}
-            onToggleDate={handleToggleDate}
-            disabled={!activeId}
-            schedules={schedules}
-            calendarEntries={calendarEntries}
-            weekLogs={weekLogs}
-          />
+        {/* Calendar toggle + popout */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowCalendar((v) => !v)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all w-full ${
+              showCalendar
+                ? 'border-arc/40 bg-arc/10 text-arc'
+                : 'border-obsidian-600 text-ink-400 hover:text-ink-50 hover:border-obsidian-500'
+            }`}
+          >
+            <ChevronRight size={12} className={`transition-transform ${showCalendar ? 'rotate-90' : ''}`} />
+            <span className="font-medium">Calendar</span>
+            <span className="text-ink-500 ml-auto">{format(calMonth, 'MMMM yyyy')}</span>
+            {activeSchedule && (
+              <span className="text-[10px] text-ink-500">
+                — assigning <span className="text-ink-300">{activeSchedule.name}</span>
+              </span>
+            )}
+          </button>
+          {showCalendar && (
+            <div className="mt-2">
+              <MonthCalendar
+                month={calMonth}
+                onMonthChange={handleMonthChange}
+                calendarEntries={calendarEntries}
+                schedules={schedules}
+                activeId={activeId}
+                onToggleDate={handleToggleDate}
+                disabled={!activeId}
+              />
+              {!activeId && (
+                <p className="text-[10px] text-ink-500 mt-1 px-1">Select a schedule above to assign it to days</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Body */}

@@ -16,6 +16,7 @@ class Schedule(Base):
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="'#6b7280'")
     pre_day_checklist_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("checklists.id", ondelete="SET NULL"),

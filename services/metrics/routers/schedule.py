@@ -19,6 +19,7 @@ router = APIRouter(prefix="/schedule", tags=["schedule"])
 class ScheduleCreate(BaseModel):
     name:                  str = Field(min_length=1, max_length=64)
     description:           str | None = None
+    color:                 str = Field(default="#6b7280", pattern="^#[0-9a-fA-F]{6}$")
     pre_day_checklist_id:  UUID | None = None
     post_day_checklist_id: UUID | None = None
 
@@ -26,6 +27,7 @@ class ScheduleCreate(BaseModel):
 class ScheduleUpdate(BaseModel):
     name:                  str | None = Field(default=None, max_length=64)
     description:           str | None = None
+    color:                 str | None = Field(default=None, pattern="^#[0-9a-fA-F]{6}$")
     pre_day_checklist_id:  UUID | None = None
     post_day_checklist_id: UUID | None = None
 
@@ -100,6 +102,7 @@ class ScheduleResponse(BaseModel):
     id:                    UUID
     name:                  str
     description:           str | None
+    color:                 str = "#6b7280"
     pre_day_checklist_id:  UUID | None = None
     post_day_checklist_id: UUID | None = None
     blocks:                list[BlockResponse] = []
@@ -107,10 +110,11 @@ class ScheduleResponse(BaseModel):
 
 class CalendarEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    id:            UUID
-    schedule_id:   UUID
-    entry_date:    date
-    schedule_name: str | None = None
+    id:             UUID
+    schedule_id:    UUID
+    entry_date:     date
+    schedule_name:  str | None = None
+    schedule_color: str | None = None
 
     @classmethod
     def from_orm_with_name(cls, entry: CalendarEntry) -> "CalendarEntryResponse":
@@ -119,6 +123,7 @@ class CalendarEntryResponse(BaseModel):
             schedule_id=entry.schedule_id,
             entry_date=entry.entry_date,
             schedule_name=entry.schedule.name if entry.schedule else None,
+            schedule_color=entry.schedule.color if entry.schedule else None,
         )
 
 
@@ -154,6 +159,7 @@ def _schedule_response(db: Session, s: Schedule) -> ScheduleResponse:
         id=s.id,
         name=s.name,
         description=s.description,
+        color=s.color,
         pre_day_checklist_id=s.pre_day_checklist_id,
         post_day_checklist_id=s.post_day_checklist_id,
         blocks=[
