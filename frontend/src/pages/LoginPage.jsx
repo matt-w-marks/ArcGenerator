@@ -30,8 +30,8 @@ export default function LoginPage() {
           <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-arc/10 arc-glow mb-4">
             <Map size={28} className="text-arc" />
           </div>
-          <h1 className="font-display text-2xl font-bold text-ink-50">RoadMap</h1>
-          <p className="text-ink-300 text-sm mt-1">Driver metrics dashboard</p>
+          <h1 className="font-display text-2xl font-bold text-ink-50">ArcGenerator</h1>
+          <p className="text-ink-300 text-sm mt-1">Professional driver operations</p>
         </div>
 
         {/* Card */}

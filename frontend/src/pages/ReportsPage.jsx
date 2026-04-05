@@ -521,7 +521,7 @@ export default function ReportsPage() {
   const data = { summary, weekly, financial, expenses, byDay, byPlatform, byZone, taxSummary, jobSearch };
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="max-w-4xl mx-auto space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="page-title">Reports</h1>

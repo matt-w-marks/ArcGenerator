@@ -11,9 +11,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
       manifest: {
-        name: 'RoadMap Dashboard',
-        short_name: 'RoadMap',
-        description: 'Track rideshare earnings, job search, and finances',
+        name: 'ArcGenerator',
+        short_name: 'ArcGen',
+        description: 'Professional driver operations platform',
         theme_color: '#0A0E14',
         background_color: '#0A0E14',
         display: 'standalone',

@@ -1,12 +1,12 @@
-# RoadMap Dashboard
+# ArcGenerator
 
-A Progressive Web App (PWA) for tracking rideshare driving metrics, job search activity, and financial progress. Installable on Android.
+A professional driver operations platform (PWA). Manages schedules, daily shift logging, zone strategy, platform management, maintenance, financial health, and reporting. Installable on Android.
 
 ## Factory Position
 
 | Attribute | Value |
 |-----------|-------|
-| System | RoadMap Dashboard |
+| System | ArcGenerator |
 | Repo | ArcGenerator |
 | Factory Role | Consumer |
 | Stages Touched | ArcForgeFabricator (output) |

@@ -1,5 +1,5 @@
 /**
- * API client for the RoadMap Dashboard.
+ * API client for ArcGenerator.
  * All requests go to the gateway via relative URLs (Vite dev proxy in dev,
  * same-origin in production). No API URL is embedded in the bundle.
  *

@@ -1,7 +1,7 @@
 {
-  "name": "roadmap-frontend",
+  "name": "arcgenerator-frontend",
   "version": "0.1.0",
-  "description": "RoadMap Dashboard PWA",
+  "description": "ArcGenerator PWA",
   "type": "module",
   "scripts": {
     "dev": "vite",
