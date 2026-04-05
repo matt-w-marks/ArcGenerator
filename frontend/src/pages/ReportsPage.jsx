@@ -6,7 +6,7 @@ import {
   LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler,
 } from 'chart.js';
 import {
-  AlertCircle, TrendingUp, TrendingDown, Minus,
+  AlertCircle, TrendingUp, TrendingDown, Minus, Info,
   DollarSign, Car, Briefcase, Target, Gauge, Eye, BookOpen,
   ChevronRight, Fuel, Shield, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
@@ -59,6 +59,32 @@ function HealthDot({ status }) {
   return <span className={`w-2.5 h-2.5 rounded-full ${colors[status] || colors.neutral}`} />;
 }
 
+function InfoTip({ formula, description }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={() => setOpen((o) => !o)}
+        className="text-ink-600 hover:text-ink-300 transition-colors p-0.5"
+      >
+        <Info size={11} />
+      </button>
+      {open && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-obsidian-800 border border-obsidian-600 rounded-lg shadow-xl px-3 py-2.5 text-left pointer-events-none">
+          {description && <p className="text-[10px] text-ink-300 leading-relaxed mb-1">{description}</p>}
+          {formula && (
+            <p className="text-[9px] text-ink-500 font-mono bg-obsidian-900/60 rounded px-1.5 py-1 leading-relaxed">{formula}</p>
+          )}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-obsidian-800 border-r border-b border-obsidian-600 rotate-45 -mt-1" />
+        </div>
+      )}
+    </span>
+  );
+}
+
 function ProgressRing({ pct, size = 48, stroke = 4, color = '#38bdf8' }) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
@@ -108,8 +134,14 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
             </p>
           </div>
           <div className="ml-auto text-right">
-            <p className="text-sm font-mono text-ink-200">{summary ? `$${summary.avg_per_hour}/hr` : '—'}</p>
-            <p className="text-[10px] text-ink-500">breakeven: ${financial?.breakeven_per_hour || '—'}/hr</p>
+            <p className="text-sm font-mono text-ink-200 flex items-center gap-1 justify-end">
+              {summary ? `$${summary.avg_per_hour}/hr` : '—'}
+              <InfoTip description="Your actual average earnings per active hour on the road." formula="total_gross / active_hours" />
+            </p>
+            <p className="text-[10px] text-ink-500 flex items-center gap-1 justify-end">
+              breakeven: ${financial?.breakeven_per_hour || '—'}/hr
+              <InfoTip description="The minimum $/hr you need to cover vehicle costs + gas. Below this you're losing money." formula="(weekly_vehicle_cost + weekly_gas) / active_hours" />
+            </p>
           </div>
         </div>
 
@@ -118,28 +150,52 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <div className="flex items-center gap-2">
             <HealthDot status={perHourStatus} />
             <div>
-              <p className="text-[10px] text-ink-500">$/hr</p>
+              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+                $/hr
+                <InfoTip
+                  description="Your average earnings per active hour driven. Green if 1.5x+ breakeven, yellow if above breakeven, red if below."
+                  formula="actual_gross / active_hours"
+                />
+              </p>
               <p className="text-sm font-mono text-ink-100">${summary?.avg_per_hour || 0}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <HealthDot status={gasPctStatus} />
             <div>
-              <p className="text-[10px] text-ink-500">Gas %</p>
+              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+                Gas %
+                <InfoTip
+                  description="What percentage of your gross earnings goes to fuel. Above 12% is a red flag — consider cheaper stations or more efficient routing."
+                  formula="gas_expenses / gross_earnings × 100"
+                />
+              </p>
               <p className="text-sm font-mono text-ink-100">{expenses?.gas_pct_of_gross || 0}%</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <HealthDot status={runwayStatus} />
             <div>
-              <p className="text-[10px] text-ink-500">Runway</p>
+              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+                Runway
+                <InfoTip
+                  description="How many days your bankroll covers at current monthly burn rate. Green 60+, yellow 30-60, red under 30."
+                  formula="bankroll / (monthly_nut / 30)"
+                />
+              </p>
               <p className="text-sm font-mono text-ink-100">{round1(financial?.runway_days || 0)}d</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <ProgressRing pct={tripPct} size={32} stroke={3} />
             <div>
-              <p className="text-[10px] text-ink-500">Hertz Trips</p>
+              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+                Hertz Trips
+                <InfoTip
+                  description="Weekly trip minimum for your Hertz rental agreement. Must hit 30 trips per Mon-Sun week to avoid penalties. Resets every Monday."
+                  formula="trips_this_week / 30"
+                />
+              </p>
               <p className="text-sm font-mono text-ink-100">{weekly?.trips_this_week || 0}/{weekly?.trips_target || 30}</p>
             </div>
           </div>
@@ -149,15 +205,18 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
       {/* Quick stats grid */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
-          { l: 'Gross', v: formatCurrency(summary?.total_gross || 0) },
-          { l: 'Expenses', v: formatCurrency(summary?.total_expenses || 0), c: 'text-error' },
-          { l: 'Trips', v: summary?.total_trips || 0 },
-          { l: 'Miles', v: round1(summary?.total_miles || 0) },
-          { l: 'Hours', v: `${summary?.total_active_hours || 0}h` },
-          { l: '$/mile', v: `$${summary?.avg_per_mile || 0}` },
+          { l: 'Gross', v: formatCurrency(summary?.total_gross || 0), d: 'Total earnings before expenses.', f: 'SUM(actual_gross)' },
+          { l: 'Expenses', v: formatCurrency(summary?.total_expenses || 0), c: 'text-error', d: 'All logged expenses: gas, tolls, parking, food, etc.', f: 'SUM(expenses.amount)' },
+          { l: 'Trips', v: summary?.total_trips || 0, d: 'Total completed rides/deliveries across all platforms.', f: 'SUM(trip_count)' },
+          { l: 'Miles', v: round1(summary?.total_miles || 0), d: 'Total miles driven. Used for IRS mileage deduction.', f: 'SUM(odometer_end - odometer_start)' },
+          { l: 'Hours', v: `${summary?.total_active_hours || 0}h`, d: 'Active driving hours (actual start to actual end per block).', f: 'SUM(actual_end - actual_start)' },
+          { l: '$/mile', v: `$${summary?.avg_per_mile || 0}`, d: 'Earnings efficiency per mile driven. Higher = less dead miles.', f: 'gross / miles_driven' },
         ].map((s, i) => (
           <div key={i} className="metal-card px-2.5 py-2">
-            <p className="text-[8px] text-ink-600 uppercase tracking-wide">{s.l}</p>
+            <p className="text-[8px] text-ink-600 uppercase tracking-wide flex items-center gap-1">
+              {s.l}
+              <InfoTip description={s.d} formula={s.f} />
+            </p>
             <p className={`text-sm font-bold font-mono ${s.c || 'text-ink-100'}`}>{s.v}</p>
           </div>
         ))}
@@ -199,7 +258,13 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <Shield size={16} className="text-ember shrink-0" />
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-ink-200">Bankroll</span>
+              <span className="text-xs text-ink-200 flex items-center gap-1">
+                Bankroll
+                <InfoTip
+                  description="Your remaining cash reserve. This is your safety net — covers monthly obligations when driving income is short. Updated manually."
+                  formula="bankroll / (monthly_nut / 30) = runway_days"
+                />
+              </span>
               <span className="text-xs font-mono text-ink-100">{formatCurrency(financial.bankroll_remaining)}</span>
             </div>
             <div className="w-full h-1.5 rounded-full bg-obsidian-700 overflow-hidden">

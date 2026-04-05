@@ -464,8 +464,8 @@ def report_financial_health(db: Session = Depends(get_db)):
         .scalar()
     )
     # Breakeven $/hr = total weekly costs / hours worked. Use actual data if available.
-    # If no hours logged yet, estimate with 30hr/week target.
-    breakeven = _safe_div(weekly_cost + weekly_gas, weekly_hours) if weekly_hours > 0 else _safe_div(weekly_cost, 30)
+    # If no hours logged yet, estimate with 40hr/week standard.
+    breakeven = _safe_div(weekly_cost + weekly_gas, weekly_hours) if weekly_hours > 0 else _safe_div(weekly_cost, 40)
 
     return FinancialHealthResponse(
         phase=config.phase,
