@@ -9,9 +9,7 @@ import {
   ChevronRight,
   Map,
   CalendarDays,
-  Database,
   BarChart3,
-  Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -39,14 +37,6 @@ const NAV_SECTIONS = [
     roles: ['ADMIN', 'OPERATOR'],
     items: [
       { to: '/finances', label: 'Finances', icon: DollarSign },
-    ],
-  },
-  {
-    label: 'System',
-    roles: ['ADMIN'],
-    items: [
-      { to: '/data', label: 'Data', icon: Database },
-      { to: '/users', label: 'Users', icon: Users },
     ],
   },
 ];

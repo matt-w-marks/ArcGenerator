@@ -7,9 +7,8 @@ import DrivingPage from './pages/DrivingPage';
 import JobsPage from './pages/JobsPage';
 import FinancesPage from './pages/FinancesPage';
 import SchedulePage from './pages/SchedulePage';
-import DataPage from './pages/DataPage';
 import ReportsPage from './pages/ReportsPage';
-import UsersPage from './pages/UsersPage';
+import SettingsPage from './pages/SettingsPage';
 import InvitePage from './pages/InvitePage';
 
 function ProtectedRoutes() {
@@ -57,8 +56,7 @@ export default function App() {
             <Route path="/finances" element={<FinancesPage />} />
             <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/data" element={<DataPage />} />
-            <Route path="/users" element={<UsersPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
