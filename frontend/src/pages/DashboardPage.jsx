@@ -101,12 +101,12 @@ function ExpenseForm({ blockId, entryDate, onAdd }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
-      <select className="arc-input text-xs py-1 w-24" value={cat} onChange={(e) => setCat(e.target.value)}>
+      <select className="arc-input text-xs py-1 font-light w-24" value={cat} onChange={(e) => setCat(e.target.value)}>
         {EXPENSE_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
       </select>
-      <input type="number" step="0.01" min="0" placeholder="$0.00" className="arc-input text-xs py-1 w-20 font-mono"
+      <input type="number" step="0.01" min="0" placeholder="$0.00" className="arc-input text-xs py-1 font-light w-20 font-mono"
         value={amt} onChange={(e) => setAmt(e.target.value)} />
-      <input type="text" placeholder="Description" className="arc-input text-xs py-1 flex-1 min-w-24" maxLength={256}
+      <input type="text" placeholder="Description" className="arc-input text-xs py-1 font-light flex-1 min-w-24" maxLength={256}
         value={desc} onChange={(e) => setDesc(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} />
       <button onClick={handleAdd} className="btn-primary text-[10px] py-1 px-2">Add</button>
@@ -149,13 +149,13 @@ function PlatformEarningForm({ blockId, entryDate, platforms, onAdd }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
-      <select className="arc-input text-xs py-1 w-28" value={pid} onChange={(e) => setPid(e.target.value)}>
+      <select className="arc-input text-xs py-1 font-light w-28" value={pid} onChange={(e) => setPid(e.target.value)}>
         <option value="">Platform…</option>
         {platforms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
-      <input type="number" step="0.01" min="0" placeholder="$0.00" className="arc-input text-xs py-1 w-20 font-mono"
+      <input type="number" step="0.01" min="0" placeholder="$0.00" className="arc-input text-xs py-1 font-light w-20 font-mono"
         value={earn} onChange={(e) => setEarn(e.target.value)} />
-      <input type="number" min="0" placeholder="Trips" className="arc-input text-xs py-1 w-16"
+      <input type="number" min="0" placeholder="Trips" className="arc-input text-xs py-1 font-light w-16"
         value={trips} onChange={(e) => setTrips(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} />
       <button onClick={handleAdd} className="btn-primary text-[10px] py-1 px-2">Add</button>
@@ -261,32 +261,32 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
             <div>
               <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Gross Earnings</label>
-              <input type="number" step="0.01" min="0" className="arc-input text-xs py-1 font-mono w-full"
+              <input type="number" step="0.01" min="0" className="arc-input text-xs py-1 font-light font-mono w-full"
                 placeholder="$0.00" value={form.actual_gross} onChange={(e) => update('actual_gross', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Trip Count</label>
-              <input type="number" min="0" className="arc-input text-xs py-1 w-full"
+              <input type="number" min="0" className="arc-input text-xs py-1 font-light w-full"
                 placeholder="0" value={form.trip_count} onChange={(e) => update('trip_count', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Actual Start</label>
-              <input type="time" className="arc-input text-xs py-1 w-full font-mono"
+              <input type="time" className="arc-input text-xs py-1 font-light w-full font-mono"
                 value={form.actual_start} onChange={(e) => update('actual_start', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Actual End</label>
-              <input type="time" className="arc-input text-xs py-1 w-full font-mono"
+              <input type="time" className="arc-input text-xs py-1 font-light w-full font-mono"
                 value={form.actual_end} onChange={(e) => update('actual_end', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Odo Start</label>
-              <input type="number" step="0.1" min="0" className="arc-input text-xs py-1 font-mono w-full"
+              <input type="number" step="0.1" min="0" className="arc-input text-xs py-1 font-light font-mono w-full"
                 placeholder="0.0" value={form.odometer_start} onChange={(e) => update('odometer_start', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Odo End</label>
-              <input type="number" step="0.1" min="0" className="arc-input text-xs py-1 font-mono w-full"
+              <input type="number" step="0.1" min="0" className="arc-input text-xs py-1 font-light font-mono w-full"
                 placeholder="0.0" value={form.odometer_end} onChange={(e) => update('odometer_end', e.target.value)} />
             </div>
           </div>
@@ -304,7 +304,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
           {/* Notes */}
           <div>
             <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Shift Notes</label>
-            <textarea className="arc-input text-xs resize-none w-full" rows={2} placeholder="Traffic, incidents, observations…"
+            <textarea className="arc-input text-xs font-light resize-none w-full" rows={2} placeholder="Traffic, incidents, observations…"
               value={form.log_notes} onChange={(e) => update('log_notes', e.target.value)} />
           </div>
 
