@@ -31,12 +31,12 @@ export default function LoginPage() {
             <Map size={28} className="text-arc" />
           </div>
           <h1 className="font-display text-2xl font-bold text-ink-50">ArcGenerator</h1>
-          <p className="text-ink-300 text-sm mt-1">Revenue Generating Streams</p>
+          <p className="text-ink-400 text-sm mt-1">RevOps</p>
         </div>
 
         {/* Card */}
         <div className="metal-card p-6">
-          <h2 className="font-display text-lg font-semibold text-ink-50 mb-5">Sign in</h2>
+          <h2 className="font-display text-lg font-normal text-ink-200 mb-5">Sign in</h2>
 
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-error/10 border border-error/30 text-error text-sm mb-4">
@@ -47,7 +47,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-[11px] text-ink-400 font-normal block mb-1.5" htmlFor="email">Email</label>
+              <label className="text-[11px] text-ink-500 font-normal block mb-1.5" htmlFor="email">Email</label>
               <input
                 id="email"
                 type="email"
@@ -61,7 +61,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-ink-400 font-normal block mb-1.5" htmlFor="password">Password</label>
+              <label className="text-[11px] text-ink-500 font-normal block mb-1.5" htmlFor="password">Password</label>
               <input
                 id="password"
                 type="password"
