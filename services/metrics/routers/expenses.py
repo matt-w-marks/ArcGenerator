@@ -65,6 +65,8 @@ class BudgetResponse(BaseModel):
     id: UUID
     budget_category: str
     monthly_amount: float
+    tax_deductible: bool
+    tax_notes: str | None
     notes: str | None
 
 class BudgetUpdate(BaseModel):
@@ -77,6 +79,8 @@ class BudgetSummaryRow(BaseModel):
     spent: float
     remaining: float
     pct_used: float
+    tax_deductible: bool
+    tax_notes: str | None
 
 
 # ── Expense CRUD ──────────────────────────────────────────────────────────────
@@ -179,7 +183,8 @@ def get_receipt(expense_id: UUID, db: Session = Depends(get_db)):
 
 @router.get("/budgets", response_model=list[BudgetResponse], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 def list_budgets(db: Session = Depends(get_db)):
-    return [BudgetResponse(id=b.id, budget_category=b.budget_category, monthly_amount=float(b.monthly_amount), notes=b.notes)
+    return [BudgetResponse(id=b.id, budget_category=b.budget_category, monthly_amount=float(b.monthly_amount),
+                           tax_deductible=b.tax_deductible, tax_notes=b.tax_notes, notes=b.notes)
             for b in db.query(Budget).order_by(Budget.budget_category).all()]
 
 @router.put("/budgets/{category}", response_model=BudgetResponse, dependencies=[require_role('ADMIN')])
@@ -232,10 +237,11 @@ def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
         biz_map[budget_cat] = biz_map.get(budget_cat, 0) + float(amt)
 
     # Build summary with budget allocations
-    budgets = {b.budget_category: float(b.monthly_amount) for b in db.query(Budget).all()}
+    budget_objs = {b.budget_category: b for b in db.query(Budget).all()}
     rows = []
     for cat in BUDGET_CATEGORIES:
-        allocated = budgets.get(cat, 0)
+        b = budget_objs.get(cat)
+        allocated = float(b.monthly_amount) if b else 0
         spent = biz_map.get(cat, 0)
         rows.append(BudgetSummaryRow(
             budget_category=cat,
@@ -243,6 +249,8 @@ def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
             spent=round(spent, 2),
             remaining=round(allocated - spent, 2),
             pct_used=round(spent / allocated * 100, 1) if allocated > 0 else 0,
+            tax_deductible=b.tax_deductible if b else False,
+            tax_notes=b.tax_notes if b else None,
         ))
     return rows
 

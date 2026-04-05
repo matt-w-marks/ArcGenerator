@@ -20,14 +20,23 @@ function thisMonth() { return format(new Date(), 'yyyy-MM'); }
 
 // ── Budget overview cards ────────────────────────────────────────────────────
 
-function BudgetOverview({ summary }) {
+function BudgetOverview({ summary, onUpdateBudget }) {
+  const [editing, setEditing] = useState(null);
+  const [editAmt, setEditAmt] = useState('');
+
   if (!summary || summary.length === 0) return null;
-  const active = summary.filter((r) => r.monthly_amount > 0 || r.spent > 0);
+
+  async function handleSave(category) {
+    await onUpdateBudget(category, Number(editAmt));
+    setEditing(null);
+  }
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-      {active.map((r) => {
+      {summary.map((r) => {
         const pct = r.monthly_amount > 0 ? Math.min(100, Math.round(r.spent / r.monthly_amount * 100)) : 0;
         const over = r.spent > r.monthly_amount && r.monthly_amount > 0;
+        const isEditing = editing === r.budget_category;
         return (
           <div key={r.budget_category} className="metal-card px-3 py-2.5">
             <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide mb-1">
@@ -35,13 +44,35 @@ function BudgetOverview({ summary }) {
             </p>
             <div className="flex items-baseline gap-1.5 mb-1.5">
               <span className="text-sm font-normal font-mono text-ink-300">{formatCurrency(r.spent)}</span>
-              <span className="text-[9px] text-ink-500">of {formatCurrency(r.monthly_amount)}</span>
+              {isEditing ? (
+                <span className="flex items-center gap-1">
+                  <span className="text-[9px] text-ink-500">of $</span>
+                  <input type="number" step="0.01" min="0" className="arc-input text-[10px] font-light font-mono py-0.5 w-16"
+                    value={editAmt} onChange={(e) => setEditAmt(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSave(r.budget_category); if (e.key === 'Escape') setEditing(null); }}
+                    autoFocus />
+                  <button onClick={() => handleSave(r.budget_category)} className="text-[9px] text-arc hover:text-ink-50">Save</button>
+                </span>
+              ) : (
+                <button onClick={() => { setEditing(r.budget_category); setEditAmt(r.monthly_amount); }}
+                  className="text-[9px] text-ink-500 hover:text-ink-200 transition-colors" title="Click to edit budget">
+                  of {formatCurrency(r.monthly_amount)}
+                </button>
+              )}
             </div>
             <div className="w-full h-1.5 rounded-full bg-obsidian-700 overflow-hidden">
               <div className={`h-full rounded-full transition-all ${over ? 'bg-error' : pct >= 80 ? 'bg-ember' : 'bg-arc'}`}
                 style={{ width: `${Math.min(pct, 100)}%` }} />
             </div>
             {over && <p className="text-[9px] text-error mt-0.5">{formatCurrency(r.spent - r.monthly_amount)} over</p>}
+            {r.tax_deductible && r.spent > 0 && (
+              <p className="text-[9px] text-success mt-0.5" title={r.tax_notes || ''}>
+                ~{formatCurrency(r.spent * 0.22)} tax savings
+              </p>
+            )}
+            {!r.tax_deductible && r.spent > 0 && (
+              <p className="text-[9px] text-ink-600 mt-0.5" title={r.tax_notes || ''}>Not deductible</p>
+            )}
           </div>
         );
       })}
@@ -226,8 +257,11 @@ export default function FinancesPage() {
         <AddExpenseForm onAdd={load} />
       </div>
 
-      {/* Budget overview */}
-      <BudgetOverview summary={summary} />
+      {/* Budget overview — click allocation to edit */}
+      <BudgetOverview summary={summary} onUpdateBudget={async (cat, amt) => {
+        await api.put(`/metrics/expenses/budgets/${cat}`, { monthly_amount: amt });
+        load();
+      }} />
 
       {/* Expense ledger */}
       <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
