@@ -79,7 +79,7 @@ function InfoTip({ formula, description, basis }) {
   const [open, setOpen] = useState(false);
   const basisLabel = basis === 'GROSS' ? 'Before expenses' : basis === 'NET' ? 'After expenses' : basis === 'EXPENSE' ? 'Cost / expense' : null;
   return (
-    <span className="relative inline-block">
+    <span className="relative inline-block" style={{ zIndex: open ? 9999 : 'auto' }}>
       <button
         type="button"
         onMouseEnter={() => setOpen(true)}
@@ -90,16 +90,7 @@ function InfoTip({ formula, description, basis }) {
         <Info size={11} />
       </button>
       {open && (
-        <div className="fixed z-[9999] w-60 bg-obsidian-800 border border-obsidian-600 rounded-lg shadow-2xl px-3 py-2.5 text-left pointer-events-none"
-          style={{ bottom: 'auto', left: 'auto' }}
-          ref={(el) => {
-            if (!el) return;
-            const btn = el.previousElementSibling;
-            if (!btn) return;
-            const r = btn.getBoundingClientRect();
-            el.style.left = `${Math.max(8, Math.min(r.left + r.width / 2 - 120, window.innerWidth - 248))}px`;
-            el.style.top = `${Math.max(8, r.top - el.offsetHeight - 8)}px`;
-          }}>
+        <div className="absolute z-[9999] bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 bg-obsidian-800 border border-obsidian-600 rounded-lg shadow-2xl px-3 py-2.5 text-left pointer-events-none">
           {basis && (
             <div className="flex items-center gap-1.5 mb-1.5">
               <BasisTag basis={basis} />
@@ -110,6 +101,7 @@ function InfoTip({ formula, description, basis }) {
           {formula && (
             <p className="text-[9px] text-ink-500 font-mono bg-obsidian-900/60 rounded px-1.5 py-1 leading-relaxed">{formula}</p>
           )}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-obsidian-800 border-r border-b border-obsidian-600 rotate-45 -mt-1" />
         </div>
       )}
     </span>
@@ -202,49 +194,49 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <div className="flex items-center gap-2">
             <HealthDot status={perHourStatus} />
             <div>
-              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+              <p className="text-[10px] text-ink-400 font-semibold flex items-center gap-1">
                 $/hr <BasisTag basis="GROSS" />
                 <InfoTip basis="GROSS"
                   description="Your average gross earnings per active hour driven. Green if 1.5x+ breakeven, yellow if above breakeven, red if below."
                   formula="actual_gross / active_hours"
                 />
               </p>
-              <p className="text-sm font-mono text-ink-100">${summary?.avg_per_hour || 0}</p>
+              <p className="text-base font-bold font-mono text-ink-50">${summary?.avg_per_hour || 0}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <HealthDot status={gasPctStatus} />
             <div>
-              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+              <p className="text-[10px] text-ink-400 font-semibold flex items-center gap-1">
                 Gas % <BasisTag basis="EXPENSE" />
                 <InfoTip basis="EXPENSE"
                   description="What percentage of your gross earnings goes to fuel. Above 12% is a red flag — consider cheaper stations or more efficient routing."
                   formula="gas_expenses / gross_earnings × 100"
                 />
               </p>
-              <p className="text-sm font-mono text-ink-100">{expenses?.gas_pct_of_gross || 0}%</p>
+              <p className="text-base font-bold font-mono text-ink-50">{expenses?.gas_pct_of_gross || 0}%</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <HealthDot status={runwayStatus} />
             <div>
-              <p className="text-[10px] text-ink-500 flex items-center gap-1">
+              <p className="text-[10px] text-ink-400 font-semibold flex items-center gap-1">
                 Runway
                 <InfoTip
                   description="How many days your bankroll covers at current monthly burn rate. Green 60+, yellow 30-60, red under 30."
                   formula="bankroll / (monthly_nut / 30)"
                 />
               </p>
-              <p className="text-sm font-mono text-ink-100">{round1(financial?.runway_days || 0)}d</p>
+              <p className="text-base font-bold font-mono text-ink-50">{round1(financial?.runway_days || 0)}d</p>
             </div>
           </div>
         </div>
-        <p className="text-[9px] text-ink-600 mt-2 italic">Red flags that can quietly go wrong without you noticing.</p>
+        <p className="text-[10px] text-ink-500 mt-2 italic">Red flags that can quietly go wrong without you noticing.</p>
       </div>
 
       {/* Quick stats grid */}
       <div>
-        <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2">Raw Numbers</p>
+        <p className="text-xs text-ink-400 font-semibold uppercase tracking-wide mb-2">Raw Numbers</p>
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
@@ -255,20 +247,20 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           { l: 'Hours', v: `${summary?.total_active_hours || 0}h`, d: 'Active driving hours. Auto-calculated from actual start/end times logged per block.', f: 'SUM(active_hours) where active_hours = actual_end − actual_start' },
           { l: '$/trip', v: `$${summary?.avg_per_trip || 0}`, b: 'GROSS', d: 'Average gross earnings per completed trip. Higher = better ride selection.', f: 'total_gross / total_trips' },
         ].map((s, i) => (
-          <div key={i} className="metal-card px-2.5 py-2">
-            <p className="text-[8px] text-ink-600 uppercase tracking-wide flex items-center gap-1">
+          <div key={i} className="metal-card px-3 py-2.5">
+            <p className="text-[9px] text-ink-400 uppercase tracking-wide font-semibold flex items-center gap-1 mb-0.5">
               {s.l}
               {s.b && <BasisTag basis={s.b} />}
               <InfoTip basis={s.b} description={s.d} formula={s.f} />
             </p>
-            <p className={`text-sm font-bold font-mono ${s.c || 'text-ink-100'}`}>{s.v}</p>
+            <p className={`text-base font-bold font-mono ${s.c || 'text-ink-50'}`}>{s.v}</p>
           </div>
         ))}
       </div>
 
       {/* Charts row */}
       <div>
-        <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2">Patterns</p>
+        <p className="text-xs text-ink-400 font-semibold uppercase tracking-wide mb-2">Patterns</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="metal-card p-4">
@@ -312,7 +304,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
       </div>
 
       {/* Financial health bar */}
-      {financial && <p className="text-[10px] text-ink-500 uppercase tracking-wide">Safety Net</p>}
+      {financial && <p className="text-xs text-ink-400 font-semibold uppercase tracking-wide">Safety Net</p>}
       {financial && (
         <div className="metal-card px-4 py-3 flex items-center gap-4">
           <Shield size={16} className="text-ember shrink-0" />
