@@ -1,6 +1,7 @@
 from .audit_log import AuditLog
 from .base import Base
 from .budget import Budget
+from .budget_category import BudgetCategory
 from .business_expense import BusinessExpense
 from .calendar_entry import CalendarEntry
 from .recurring_expense import RecurringExpense
@@ -28,6 +29,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "Budget",
+    "BudgetCategory",
     "BusinessExpense",
     "CalendarEntry",
     "Checklist",

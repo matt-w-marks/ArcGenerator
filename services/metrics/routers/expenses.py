@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from audit import audit, diff, snapshot, get_user_id
 from database import get_db
-from models import Budget, BusinessExpense, DailyBlockLog, DailyExpense, RecurringExpense
+from models import Budget, BudgetCategory, BusinessExpense, DailyBlockLog, DailyExpense, RecurringExpense
 from role_guard import require_role
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -36,7 +36,7 @@ DAILY_TO_BUDGET = {
 
 class ExpenseCreate(BaseModel):
     date: date
-    budget_category: str = Field(pattern="^(" + "|".join(BUDGET_CATEGORIES) + ")$")
+    budget_category: str = Field(max_length=32)
     amount: float = Field(ge=0)
     vendor: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=256)
@@ -62,13 +62,42 @@ class ExpenseResponse(BaseModel):
     notes: str | None
     created_at: str
 
+class BudgetCategoryResponse(BaseModel):
+    id: UUID
+    name: str
+    label: str
+    tax_deductible: bool
+    tax_notes: str | None
+    sort_order: int
+    active: bool
+
+class BudgetCategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=32, pattern="^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=1, max_length=64)
+    tax_deductible: bool = False
+    tax_notes: str | None = None
+    sort_order: int = 0
+
+class BudgetCategoryUpdate(BaseModel):
+    label: str | None = None
+    tax_deductible: bool | None = None
+    tax_notes: str | None = None
+    sort_order: int | None = None
+
 class BudgetResponse(BaseModel):
     id: UUID
     budget_category: str
+    label: str
     monthly_amount: float
     tax_deductible: bool
     tax_notes: str | None
     notes: str | None
+
+class BudgetCreate(BaseModel):
+    budget_category: str
+    month: str = Field(pattern="^\\d{4}-\\d{2}$")
+    monthly_amount: float = Field(ge=0)
+    notes: str | None = None
 
 class BudgetUpdate(BaseModel):
     monthly_amount: float = Field(ge=0)
@@ -76,6 +105,7 @@ class BudgetUpdate(BaseModel):
 
 class BudgetSummaryRow(BaseModel):
     budget_category: str
+    label: str
     monthly_amount: float
     spent: float
     remaining: float
@@ -106,6 +136,9 @@ def list_expenses(
 
 @router.post("", response_model=ExpenseResponse, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def create_expense(body: ExpenseCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    cat = db.query(BudgetCategory).filter(BudgetCategory.name == body.budget_category).first()
+    if cat is None:
+        raise HTTPException(400, f"Unknown budget category: {body.budget_category}")
     exp = BusinessExpense(created_by=user_id, **body.model_dump())
     db.add(exp)
     db.flush()
@@ -180,19 +213,96 @@ def get_receipt(expense_id: UUID, db: Session = Depends(get_db)):
     return Response(content=exp.receipt_data, media_type=exp.receipt_mime)
 
 
-# ── Budgets ───────────────────────────────────────────────────────────────────
+# ── Budget Categories (master list) ───────────────────────────────────────────
 
-def _budget_response(b: Budget) -> BudgetResponse:
-    return BudgetResponse(id=b.id, budget_category=b.budget_category, monthly_amount=float(b.monthly_amount),
-                          tax_deductible=b.tax_deductible, tax_notes=b.tax_notes, notes=b.notes)
+def _cat_response(c: BudgetCategory) -> BudgetCategoryResponse:
+    return BudgetCategoryResponse(id=c.id, name=c.name, label=c.label,
+        tax_deductible=c.tax_deductible, tax_notes=c.tax_notes,
+        sort_order=c.sort_order, active=c.active)
 
-@router.get("/budgets", response_model=list[BudgetResponse], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("/budget-categories", response_model=list[BudgetCategoryResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
+def list_categories(db: Session = Depends(get_db), include_inactive: bool = Query(default=False)):
+    q = db.query(BudgetCategory)
+    if not include_inactive:
+        q = q.filter(BudgetCategory.active.is_(True))
+    return [_cat_response(c) for c in q.order_by(BudgetCategory.sort_order).all()]
+
+@router.post("/budget-categories", response_model=BudgetCategoryResponse, status_code=201, dependencies=[require_role("ADMIN")])
+def create_category(body: BudgetCategoryCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    existing = db.query(BudgetCategory).filter(BudgetCategory.name == body.name).first()
+    if existing:
+        raise HTTPException(409, "Category name already exists")
+    c = BudgetCategory(**body.model_dump())
+    db.add(c)
+    db.flush()
+    audit(db, "budget_categories", c.id, "CREATE", user_id, snapshot({"name": c.name, "label": c.label, "tax_deductible": c.tax_deductible}))
+    db.commit()
+    db.refresh(c)
+    return _cat_response(c)
+
+@router.put("/budget-categories/{name}", response_model=BudgetCategoryResponse, dependencies=[require_role("ADMIN")])
+def update_category(name: str, body: BudgetCategoryUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    c = db.query(BudgetCategory).filter(BudgetCategory.name == name).first()
+    if c is None:
+        raise HTTPException(404, "Category not found")
+    old = {"label": c.label, "tax_deductible": c.tax_deductible}
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(c, field, value)
+    changes = diff(old, {"label": c.label, "tax_deductible": c.tax_deductible})
+    if changes:
+        audit(db, "budget_categories", c.id, "UPDATE", user_id, changes)
+    db.commit()
+    db.refresh(c)
+    return _cat_response(c)
+
+@router.delete("/budget-categories/{name}", status_code=204, dependencies=[require_role("ADMIN")])
+def disable_category(name: str, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    c = db.query(BudgetCategory).filter(BudgetCategory.name == name).first()
+    if c is None:
+        raise HTTPException(404, "Category not found")
+    c.active = False
+    audit(db, "budget_categories", c.id, "UPDATE", user_id, {"active": {"old": True, "new": False}})
+    db.commit()
+
+
+# ── Budgets (monthly allocations) ─────────────────────────────────────────────
+
+def _budget_response(b: Budget, cat_map: dict) -> BudgetResponse:
+    c = cat_map.get(b.budget_category)
+    return BudgetResponse(id=b.id, budget_category=b.budget_category,
+        label=c.label if c else b.budget_category,
+        monthly_amount=float(b.monthly_amount),
+        tax_deductible=c.tax_deductible if c else False,
+        tax_notes=c.tax_notes if c else None,
+        notes=b.notes)
+
+def _cat_map(db: Session) -> dict:
+    return {c.name: c for c in db.query(BudgetCategory).all()}
+
+@router.get("/budgets", response_model=list[BudgetResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
 def list_budgets(db: Session = Depends(get_db), month: str = Query(default=None)):
     if not month:
         month = date.today().strftime("%Y-%m")
-    return [_budget_response(b) for b in db.query(Budget).filter(Budget.month == month).order_by(Budget.budget_category).all()]
+    cm = _cat_map(db)
+    return [_budget_response(b, cm) for b in db.query(Budget).filter(Budget.month == month).order_by(Budget.budget_category).all()]
 
-@router.put("/budgets/{category}", response_model=BudgetResponse, dependencies=[require_role('ADMIN')])
+@router.post("/budgets", response_model=BudgetResponse, status_code=201, dependencies=[require_role("ADMIN")])
+def add_budget_item(body: BudgetCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    cat = db.query(BudgetCategory).filter(BudgetCategory.name == body.budget_category).first()
+    if cat is None:
+        raise HTTPException(404, "Category not found in master list")
+    existing = db.query(Budget).filter(Budget.budget_category == body.budget_category, Budget.month == body.month).first()
+    if existing:
+        raise HTTPException(409, f"{body.budget_category} already exists for {body.month}")
+    b = Budget(budget_category=body.budget_category, month=body.month, monthly_amount=body.monthly_amount, notes=body.notes)
+    db.add(b)
+    db.flush()
+    audit(db, "budgets", b.id, "CREATE", user_id, snapshot({"category": body.budget_category, "month": body.month, "amount": float(body.monthly_amount)}))
+    db.commit()
+    db.refresh(b)
+    return _budget_response(b, _cat_map(db))
+
+@router.put("/budgets/{category}", response_model=BudgetResponse, dependencies=[require_role("ADMIN")])
 def update_budget(category: str, body: BudgetUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(default=None)):
     if not month:
         month = date.today().strftime("%Y-%m")
@@ -207,12 +317,22 @@ def update_budget(category: str, body: BudgetUpdate, db: Session = Depends(get_d
         audit(db, "budgets", b.id, "UPDATE", user_id, {"monthly_amount": {"old": old_amt, "new": body.monthly_amount}, "month": month})
     db.commit()
     db.refresh(b)
-    return _budget_response(b)
+    return _budget_response(b, _cat_map(db))
 
-@router.post("/budgets/copy", dependencies=[require_role('ADMIN')])
+@router.delete("/budgets/{category}", status_code=204, dependencies=[require_role("ADMIN")])
+def remove_budget_item(category: str, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(default=None)):
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    b = db.query(Budget).filter(Budget.budget_category == category, Budget.month == month).first()
+    if b is None:
+        raise HTTPException(404, "Budget not found for that category/month")
+    audit(db, "budgets", b.id, "DELETE", user_id, snapshot({"category": category, "month": month, "amount": float(b.monthly_amount)}))
+    db.delete(b)
+    db.commit()
+
+@router.post("/budgets/copy", dependencies=[require_role("ADMIN")])
 def copy_budgets(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id),
                  from_month: str = Query(..., alias="from"), to_month: str = Query(..., alias="to")):
-    """Copy all budget allocations from one month to another."""
     source = db.query(Budget).filter(Budget.month == from_month).all()
     if not source:
         raise HTTPException(404, f"No budgets found for {from_month}")
@@ -220,25 +340,19 @@ def copy_budgets(db: Session = Depends(get_db), user_id: UUID | None = Depends(g
     if existing:
         raise HTTPException(409, f"Budgets already exist for {to_month}")
     for b in source:
-        db.add(Budget(
-            budget_category=b.budget_category, month=to_month,
-            monthly_amount=b.monthly_amount, tax_deductible=b.tax_deductible,
-            tax_notes=b.tax_notes, notes=b.notes,
-        ))
+        db.add(Budget(budget_category=b.budget_category, month=to_month, monthly_amount=b.monthly_amount, notes=b.notes))
     db.flush()
-    audit(db, "budgets", source[0].id, "CREATE", user_id, {"action": f"copied {len(source)} budgets {from_month} → {to_month}"})
+    audit(db, "budgets", source[0].id, "CREATE", user_id, {"action": f"copied {len(source)} budgets {from_month} -> {to_month}"})
     db.commit()
     return {"copied": len(source), "from_month": from_month, "to_month": to_month}
 
-@router.get("/budgets/months", dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("/budgets/months", dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
 def list_budget_months(db: Session = Depends(get_db)):
-    """List all months that have budgets defined."""
     rows = db.query(Budget.month).distinct().order_by(Budget.month).all()
     return [r[0] for r in rows]
 
-@router.get("/budgets/summary", response_model=list[BudgetSummaryRow], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("/budgets/summary", response_model=list[BudgetSummaryRow], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
 def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
-    """Budget vs actual for a given month (YYYY-MM). Combines business_expenses + daily_expenses."""
     try:
         year, mon = map(int, month.split("-"))
     except ValueError:
@@ -248,7 +362,6 @@ def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
     month_start = d(year, mon, 1)
     month_end = d(year, mon + 1, 1) if mon < 12 else d(year + 1, 1, 1)
 
-    # Business expenses by category
     biz = (
         db.query(BusinessExpense.budget_category, sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
         .filter(BusinessExpense.date >= month_start, BusinessExpense.date < month_end, BusinessExpense.deleted_at.is_(None))
@@ -257,7 +370,6 @@ def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
     )
     biz_map = {cat: float(amt) for cat, amt in biz}
 
-    # Daily expenses by category, mapped to budget categories
     daily = (
         db.query(DailyExpense.category, sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
         .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
@@ -270,21 +382,25 @@ def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
         budget_cat = DAILY_TO_BUDGET.get(cat, "other")
         biz_map[budget_cat] = biz_map.get(budget_cat, 0) + float(amt)
 
-    # Build summary with budget allocations
+    cm = _cat_map(db)
     budget_objs = {b.budget_category: b for b in db.query(Budget).filter(Budget.month == month).all()}
+    # Include all categories that have either a budget allocation or spending
+    all_cats = set(budget_objs.keys()) | set(biz_map.keys())
     rows = []
-    for cat in BUDGET_CATEGORIES:
+    for cat in sorted(all_cats):
         b = budget_objs.get(cat)
+        c = cm.get(cat)
         allocated = float(b.monthly_amount) if b else 0
         spent = biz_map.get(cat, 0)
         rows.append(BudgetSummaryRow(
             budget_category=cat,
+            label=c.label if c else cat,
             monthly_amount=round(allocated, 2),
             spent=round(spent, 2),
             remaining=round(allocated - spent, 2),
             pct_used=round(spent / allocated * 100, 1) if allocated > 0 else 0,
-            tax_deductible=b.tax_deductible if b else False,
-            tax_notes=b.tax_notes if b else None,
+            tax_deductible=c.tax_deductible if c else False,
+            tax_notes=c.tax_notes if c else None,
         ))
     return rows
 
