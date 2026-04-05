@@ -153,7 +153,7 @@
     -webkit-text-fill-color: #E8EAED;
     color-scheme: dark;
   }
-  .arc-input::placeholder { color: #6B7280; }
+  .arc-input::placeholder { color: #4B5563; font-weight: 300; }
   .arc-input:focus {
     border-color: #00D4FF;
     box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.15);

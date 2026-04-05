@@ -36,7 +36,7 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="metal-card p-6">
-          <h2 className="font-display text-lg font-normal text-ink-200 mb-5">Sign in</h2>
+          <h2 className="font-display text-lg font-semibold text-ink-50 mb-5">Sign in</h2>
 
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-error/10 border border-error/30 text-error text-sm mb-4">
@@ -47,7 +47,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-[11px] text-ink-500 font-normal block mb-1.5" htmlFor="email">Email</label>
+              <label className="section-label block mb-1.5" htmlFor="email">Email</label>
               <input
                 id="email"
                 type="email"
@@ -61,7 +61,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-[11px] text-ink-500 font-normal block mb-1.5" htmlFor="password">Password</label>
+              <label className="section-label block mb-1.5" htmlFor="password">Password</label>
               <input
                 id="password"
                 type="password"
