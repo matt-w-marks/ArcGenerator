@@ -227,7 +227,7 @@ function ExpenseLedger({ expenses, onDelete, onRefresh }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function FinancesPage() {
-  const [tab, setTab] = useState('expenses');
+  const [tab, setTab] = useState('reporting');
   const [summary, setSummary] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
@@ -261,7 +261,7 @@ export default function FinancesPage() {
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-obsidian-700">
-        {[['expenses', 'Expenses'], ['recurring', 'Recurring'], ['budgets', 'Budgets']].map(([id, label]) => (
+        {[['reporting', 'Financial Reporting'], ['expenses', 'Expenses'], ['budgets', 'Budgets']].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === id ? 'border-arc text-arc' : 'border-transparent text-ink-400 hover:text-ink-200'
@@ -271,28 +271,38 @@ export default function FinancesPage() {
         ))}
       </div>
 
-      {tab === 'expenses' && (
+      {/* Financial Reporting — budget overview cards and spending summary */}
+      {tab === 'reporting' && (
         <>
-          {/* Budget overview cards */}
           <BudgetOverview summary={summary} onUpdateBudget={async (cat, amt) => {
             await api.put(`/metrics/expenses/budgets/${cat}`, { monthly_amount: amt });
             load();
           }} />
-
-          {/* Expense ledger */}
-          <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
-
-          {expenses.length === 0 && summary.every((r) => r.spent === 0) && (
+          {summary.every((r) => r.spent === 0) && (
             <div className="metal-card px-6 py-8 text-center">
-              <Receipt size={24} className="text-ink-500 mx-auto mb-2" />
-              <p className="text-ink-400 text-sm">No business expenses logged yet.</p>
-              <p className="text-ink-500 text-xs mt-1">Use "Add Expense" to log vehicle supplies, tech costs, licensing, etc.</p>
+              <p className="text-ink-400 text-sm">No spending data yet this month.</p>
+              <p className="text-ink-500 text-xs mt-1">Log expenses or set up recurring costs to see budget tracking here.</p>
             </div>
           )}
         </>
       )}
 
-      {tab === 'recurring' && <RecurringPage />}
+      {/* Expenses — one-time ledger + recurring, all in one place */}
+      {tab === 'expenses' && (
+        <>
+          <RecurringPage />
+          <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
+          {expenses.length === 0 && (
+            <div className="metal-card px-6 py-8 text-center">
+              <Receipt size={24} className="text-ink-500 mx-auto mb-2" />
+              <p className="text-ink-400 text-sm">No one-time expenses logged yet.</p>
+              <p className="text-ink-500 text-xs mt-1">Use "Add Expense" above for vehicle supplies, tech costs, etc.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Budgets — monthly allocations */}
       {tab === 'budgets' && <BudgetsPage />}
     </div>
   );

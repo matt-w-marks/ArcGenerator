@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Plus, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency } from '../lib/utils';
 
@@ -24,9 +24,10 @@ export default function RecurringPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ budget_category: 'vehicle_rental', amount: '', frequency: 'weekly', vendor: '', description: '', start_date: todayStr() });
   const [error, setError] = useState('');
-  const [generating, setGenerating] = useState(false);
 
   async function load() {
+    // Auto-generate pending entries, then load
+    await api.post('/metrics/expenses/recurring/generate');
     const r = await api.get('/metrics/expenses/recurring');
     if (r.ok) setItems(await r.json());
   }
@@ -55,16 +56,6 @@ export default function RecurringPage() {
     load();
   }
 
-  async function handleGenerate() {
-    setGenerating(true);
-    const r = await api.post('/metrics/expenses/recurring/generate');
-    if (r.ok) {
-      const d = await r.json();
-      alert(`Generated ${d.generated} expense entries for ${d.month}`);
-    }
-    setGenerating(false);
-  }
-
   const totalMonthly = items.filter((i) => i.active).reduce((s, i) => s + i.monthly_projection, 0);
 
   return (
@@ -76,14 +67,9 @@ export default function RecurringPage() {
             Auto-generated on schedule. Total: {formatCurrency(totalMonthly)}/month projected.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={handleGenerate} disabled={generating} className="btn-ghost text-xs gap-1.5">
-            <RefreshCw size={12} className={generating ? 'animate-spin' : ''} /> Generate Now
-          </button>
-          <button onClick={() => setShowForm(true)} className="btn-primary text-xs gap-1.5">
-            <Plus size={12} /> Add Recurring
-          </button>
-        </div>
+        <button onClick={() => setShowForm(true)} className="btn-primary text-xs gap-1.5">
+          <Plus size={12} /> Add Recurring
+        </button>
       </div>
 
       {error && (
