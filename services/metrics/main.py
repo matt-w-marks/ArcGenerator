@@ -6,7 +6,7 @@ from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from routers import audit, driving_sessions, expenses, financial_snapshots, job_activities, maintenance, platforms, reports, schedule, shift_log, weekly_rollups, zones
+from routers import audit, driving_sessions, expenses, financial_snapshots, fleet, job_activities, maintenance, platforms, reports, schedule, shift_log, weekly_rollups, zones
 
 
 @asynccontextmanager
@@ -35,6 +35,7 @@ app.include_router(maintenance.router)
 app.include_router(platforms.router)
 app.include_router(audit.router)
 app.include_router(expenses.router)
+app.include_router(fleet.router)
 app.include_router(reports.router)
 app.include_router(schedule.router)
 app.include_router(shift_log.router)

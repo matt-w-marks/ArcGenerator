@@ -9,6 +9,7 @@ import FinancesPage from './pages/FinancesPage';
 import SchedulePage from './pages/SchedulePage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import FleetPage from './pages/FleetPage';
 import InvitePage from './pages/InvitePage';
 
 function ProtectedRoutes() {
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/finances" element={<FinancesPage />} />
             <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/fleet" element={<FleetPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

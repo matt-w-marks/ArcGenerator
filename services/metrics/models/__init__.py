@@ -4,6 +4,7 @@ from .budget import Budget
 from .business_expense import BusinessExpense
 from .calendar_entry import CalendarEntry
 from .recurring_expense import RecurringExpense
+from .vehicle import Vehicle
 from .checklist import Checklist
 from .checklist_item import ChecklistItem
 from .checklist_log import ChecklistLog
@@ -45,6 +46,7 @@ __all__ = [
     "Schedule",
     "ScheduleBlock",
     "SystemConfig",
+    "Vehicle",
     "WeeklyRollup",
     "Zone",
     "ZoneSchedule",

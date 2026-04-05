@@ -10,6 +10,7 @@ import {
   Map,
   CalendarDays,
   BarChart3,
+  Truck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -37,6 +38,13 @@ const NAV_SECTIONS = [
     roles: ['ADMIN', 'OPERATOR'],
     items: [
       { to: '/finances', label: 'Finances', icon: DollarSign },
+    ],
+  },
+  {
+    label: 'Fleet',
+    roles: ['ADMIN', 'OPERATOR'],
+    items: [
+      { to: '/fleet', label: 'Vehicles', icon: Truck },
     ],
   },
 ];
