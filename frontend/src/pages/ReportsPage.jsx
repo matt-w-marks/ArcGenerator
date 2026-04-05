@@ -90,7 +90,16 @@ function InfoTip({ formula, description, basis }) {
         <Info size={11} />
       </button>
       {open && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 bg-obsidian-800 border border-obsidian-600 rounded-lg shadow-xl px-3 py-2.5 text-left pointer-events-none">
+        <div className="fixed z-[9999] w-60 bg-obsidian-800 border border-obsidian-600 rounded-lg shadow-2xl px-3 py-2.5 text-left pointer-events-none"
+          style={{ bottom: 'auto', left: 'auto' }}
+          ref={(el) => {
+            if (!el) return;
+            const btn = el.previousElementSibling;
+            if (!btn) return;
+            const r = btn.getBoundingClientRect();
+            el.style.left = `${Math.max(8, Math.min(r.left + r.width / 2 - 120, window.innerWidth - 248))}px`;
+            el.style.top = `${Math.max(8, r.top - el.offsetHeight - 8)}px`;
+          }}>
           {basis && (
             <div className="flex items-center gap-1.5 mb-1.5">
               <BasisTag basis={basis} />
@@ -101,7 +110,6 @@ function InfoTip({ formula, description, basis }) {
           {formula && (
             <p className="text-[9px] text-ink-500 font-mono bg-obsidian-900/60 rounded px-1.5 py-1 leading-relaxed">{formula}</p>
           )}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-obsidian-800 border-r border-b border-obsidian-600 rotate-45 -mt-1" />
         </div>
       )}
     </span>
@@ -111,15 +119,31 @@ function InfoTip({ formula, description, basis }) {
 function ProgressRing({ pct, size = 48, stroke = 4, color = '#38bdf8' }) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (Math.min(pct, 100) / 100) * circ;
+  const isOver = pct > 100;
+  const basePct = Math.min(pct, 100);
+  const overPct = isOver ? Math.min(pct - 100, 100) : 0;
+  const baseOffset = circ - (basePct / 100) * circ;
+  const overOffset = circ - (overPct / 100) * circ;
+  const baseColor = isOver ? '#22c55e' : basePct >= 100 ? '#22c55e' : color;
+  const overColor = '#fbbf24'; // gold for exceeding target
   return (
     <svg width={size} height={size} className="shrink-0">
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(100,116,139,0.15)" strokeWidth={stroke} />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={pct >= 100 ? '#22c55e' : color}
-        strokeWidth={stroke} strokeDasharray={circ} strokeDashoffset={offset}
+      {/* Base ring: fills to 100% in cyan, turns green at 100% */}
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={baseColor}
+        strokeWidth={stroke} strokeDasharray={circ} strokeDashoffset={baseOffset}
         strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`} className="transition-all duration-500" />
+      {/* Overflow ring: gold, fills over the green when >100% */}
+      {isOver && (
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={overColor}
+          strokeWidth={stroke + 1} strokeDasharray={circ} strokeDashoffset={overOffset}
+          strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`} className="transition-all duration-500" opacity={0.9} />
+      )}
       <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central"
-        className="text-[10px] font-bold fill-ink-100 font-mono">{Math.min(pct, 100)}%</text>
+        className={`font-bold font-mono ${isOver ? 'fill-yellow-400' : 'fill-ink-100'}`}
+        style={{ fontSize: isOver ? size * 0.17 : size * 0.2 }}>
+        {pct}%
+      </text>
     </svg>
   );
 }
@@ -130,7 +154,6 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
   const rangeDays = summary ? Math.max(1, summary.days_worked || 1) : 1;
   const dailyTarget = financial ? financial.monthly_nut / 30 : 116.67;
   const netPct = summary ? Math.round(summary.total_net / (dailyTarget * rangeDays) * 100) : 0;
-  const tripPct = weekly ? Math.round(weekly.trips_this_week / weekly.trips_target * 100) : 0;
   const perHourStatus = summary && financial
     ? summary.avg_per_hour >= financial.breakeven_per_hour * 1.5 ? 'good' : summary.avg_per_hour >= financial.breakeven_per_hour ? 'warning' : 'bad'
     : 'neutral';
@@ -175,7 +198,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
         </div>
 
         {/* Health indicators row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div className="flex items-center gap-2">
             <HealthDot status={perHourStatus} />
             <div>
@@ -215,23 +238,14 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
               <p className="text-sm font-mono text-ink-100">{round1(financial?.runway_days || 0)}d</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <ProgressRing pct={tripPct} size={32} stroke={3} />
-            <div>
-              <p className="text-[10px] text-ink-500 flex items-center gap-1">
-                Hertz Trips
-                <InfoTip
-                  description="Weekly trip minimum for your Hertz rental agreement. Must hit 30 trips per Mon-Sun week to avoid penalties. Resets every Monday."
-                  formula="trips_this_week / 30"
-                />
-              </p>
-              <p className="text-sm font-mono text-ink-100">{weekly?.trips_this_week || 0}/{weekly?.trips_target || 30}</p>
-            </div>
-          </div>
         </div>
+        <p className="text-[9px] text-ink-600 mt-2 italic">Red flags that can quietly go wrong without you noticing.</p>
       </div>
 
       {/* Quick stats grid */}
+      <div>
+        <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2">Raw Numbers</p>
+      </div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
           { l: 'Gross', v: formatCurrency(summary?.total_gross || 0), b: 'GROSS', d: 'Total earnings before any expenses are deducted.', f: 'SUM(actual_gross) from daily_block_logs' },
@@ -253,13 +267,16 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
       </div>
 
       {/* Charts row */}
+      <div>
+        <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2">Patterns</p>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {byDay.length > 0 && (
-          <div className="metal-card p-4">
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
-              Net Trend <BasisTag basis="NET" />
-              <InfoTip basis="NET" description="Daily net earnings over time. Green dots = profitable days, red dots = loss days. Net = gross minus all expenses for that day." formula="day_net = day_gross − day_expenses" />
-            </p>
+        <div className="metal-card p-4">
+          <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+            Net Trend <BasisTag basis="NET" />
+            <InfoTip basis="NET" description="Daily net earnings over time. Green dots = profitable days, red dots = loss days. Net = gross minus all expenses for that day." formula="day_net = day_gross − day_expenses" />
+          </p>
+          {byDay.length > 0 ? (
             <div style={{ height: 160 }}>
               <Line data={{
                 labels: byDay.map((d) => format(new Date(d.date + 'T00:00'), 'EEE')),
@@ -270,25 +287,32 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
                 }],
               }} options={lineOpts()} />
             </div>
-          </div>
-        )}
-        {byPlatform.length > 0 && (
-          <div className="metal-card p-4">
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
-              Platform Split <BasisTag basis="GROSS" />
-              <InfoTip basis="GROSS" description="Gross earnings split by platform (Uber, Lyft, etc.). Based on per-platform earnings logged in each block. Does not subtract expenses." formula="SUM(platform_earnings) per platform" />
-            </p>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-ink-600 text-xs">Log shift data to see trends</div>
+          )}
+          <p className="text-[9px] text-ink-600 mt-2 italic">Shows if you're improving or declining day over day.</p>
+        </div>
+        <div className="metal-card p-4">
+          <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+            Platform Split <BasisTag basis="GROSS" />
+            <InfoTip basis="GROSS" description="Gross earnings split by platform (Uber, Lyft, etc.). Based on per-platform earnings logged in each block. Does not subtract expenses." formula="SUM(platform_earnings) per platform" />
+          </p>
+          {byPlatform.length > 0 ? (
             <div style={{ height: 160 }}>
               <Doughnut data={{
                 labels: byPlatform.map((p) => p.platform_name),
                 datasets: [{ data: byPlatform.map((p) => p.total_earnings), backgroundColor: byPlatform.map((p) => p.platform_color || '#6b7280') }],
               }} options={donutOpts} />
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center justify-center h-32 text-ink-600 text-xs">Log platform earnings to see split</div>
+          )}
+          <p className="text-[9px] text-ink-600 mt-2 italic">Which platforms are carrying the weight.</p>
+        </div>
       </div>
 
       {/* Financial health bar */}
+      {financial && <p className="text-[10px] text-ink-500 uppercase tracking-wide">Safety Net</p>}
       {financial && (
         <div className="metal-card px-4 py-3 flex items-center gap-4">
           <Shield size={16} className="text-ember shrink-0" />
@@ -383,20 +407,22 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
       {weekly && (
         <Section
           title="Your Week"
-          insight={`${weekly.trips_this_week} of ${weekly.trips_target} Hertz trips completed.${
+          insight={`${weekly.trips_this_week} trips, ${formatCurrency(weekly.gross)} gross, ${formatCurrency(weekly.net)} net this week.${
             weeklyPace ? ` At current pace (gross/days × 7) you'll hit ${weeklyPace >= weeklyTarget ? formatCurrency(weeklyPace) + ' gross — above' : formatCurrency(weeklyPace) + ' gross — below'} the ${formatCurrency(weeklyTarget)}/week target (monthly_nut ÷ 4.3).` : ''
-          }${weekly.trips_this_week >= weekly.trips_target ? ' Trip minimum met.' : ` Need ${weekly.trips_target - weekly.trips_this_week} more trips.`}`}
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <ProgressRing pct={Math.round(weekly.trips_this_week / weekly.trips_target * 100)} size={48} stroke={4} />
-            <div className="flex-1">
-              <div className="w-full h-2 rounded-full bg-obsidian-700 overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${weekly.trips_this_week >= weekly.trips_target ? 'bg-success' : 'bg-arc'}`}
-                  style={{ width: `${Math.min(100, weekly.trips_this_week / weekly.trips_target * 100)}%` }} />
-              </div>
-              <div className="flex justify-between mt-1 text-[9px] text-ink-500 font-mono">
-                <span>0</span><span>{weekly.trips_target}</span>
-              </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-lg font-bold font-mono text-ink-100">{weekly.trips_this_week}</p>
+              <p className="text-[9px] text-ink-500">trips</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold font-mono text-ink-100">{round1(weekly.miles)}</p>
+              <p className="text-[9px] text-ink-500">miles</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold font-mono text-ink-100">{round1(weekly.active_hours)}h</p>
+              <p className="text-[9px] text-ink-500">active hours</p>
             </div>
           </div>
         </Section>
