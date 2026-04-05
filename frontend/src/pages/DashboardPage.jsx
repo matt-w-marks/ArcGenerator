@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { format } from 'date-fns';
+import { format, addDays, subDays, isToday as isTodayFn } from 'date-fns';
 import {
   MapPin, Zap, Briefcase, Coffee, StickyNote, ClipboardCheck,
-  ChevronDown, ChevronUp, Check, AlertCircle,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, AlertCircle,
   Play, Plus, Trash2, Car,
 } from 'lucide-react';
 import { api } from '../lib/api';
@@ -350,6 +350,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [dayData, setDayData] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [platforms, setPlatforms] = useState([]);
@@ -358,7 +359,8 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [now, setNow] = useState(currentHour());
 
-  const entryDate = todayStr();
+  const entryDate = format(selectedDate, 'yyyy-MM-dd');
+  const isToday = isTodayFn(selectedDate);
 
   useEffect(() => {
     const id = setInterval(() => setNow(currentHour()), 60000);
@@ -366,27 +368,29 @@ export default function DashboardPage() {
   }, []);
 
   const loadDay = useCallback(async () => {
+    const ds = format(selectedDate, 'yyyy-MM-dd');
     const [dayRes, platRes] = await Promise.all([
-      api.get('/metrics/shift-log/today'),
+      api.get(`/metrics/shift-log/${ds}`),
       api.get('/metrics/platforms?include_inactive=false'),
     ]);
-    if (!dayRes.ok) { setNoSchedule(true); return; }
+    if (!dayRes.ok) { setNoSchedule(true); setDayData(null); setBlocks([]); return; }
     const data = await dayRes.json();
     setDayData(data);
     setBlocks(data.blocks || []);
     setNoSchedule(false);
+    setExpanded(null);
     if (platRes.ok) setPlatforms(await platRes.json());
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => { loadDay(); }, [loadDay]);
 
-  // Auto-expand current block on first load
+  // Auto-expand current block on first load (today only)
   useEffect(() => {
-    if (expanded === null && blocks.length > 0) {
+    if (expanded === null && blocks.length > 0 && isToday) {
       const cur = blocks.find((b) => b.hour_start <= now && b.hour_end > now);
       if (cur) setExpanded(cur.id);
     }
-  }, [blocks, now, expanded]);
+  }, [blocks, now, expanded, isToday]);
 
   async function handleSaveBlock(blockId, data) {
     await api.put(`/metrics/shift-log/blocks/${blockId}`, data);
@@ -413,16 +417,35 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <div>
-        <h1 className="page-title">Shift Log</h1>
-        <p className="text-xs text-ink-400 mt-0.5">
-          {format(new Date(), 'EEEE, MMMM d')} · {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Shift Log</h1>
+          <p className="text-xs text-ink-400 mt-0.5">
+            {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+            {isToday && ` · ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setSelectedDate((d) => subDays(d, 1))}
+            className="p-2 rounded-lg text-ink-400 hover:text-ink-50 hover:bg-obsidian-700 transition-colors">
+            <ChevronLeft size={16} />
+          </button>
+          {!isToday && (
+            <button type="button" onClick={() => setSelectedDate(new Date())}
+              className="text-[10px] px-2 py-1 rounded-lg border border-arc/30 text-arc hover:bg-arc/10 transition-colors">
+              Today
+            </button>
+          )}
+          <button type="button" onClick={() => setSelectedDate((d) => addDays(d, 1))}
+            className="p-2 rounded-lg text-ink-400 hover:text-ink-50 hover:bg-obsidian-700 transition-colors">
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
 
       {noSchedule && (
         <div className="metal-card px-6 py-10 text-center space-y-2">
-          <p className="text-ink-300 text-sm">No schedule assigned to today.</p>
+          <p className="text-ink-300 text-sm">No schedule assigned to {isToday ? 'today' : format(selectedDate, 'MMMM d')}.</p>
           <p className="text-ink-500 text-xs">Go to <span className="text-arc">Schedule</span> → Calendar to assign one.</p>
         </div>
       )}
@@ -436,7 +459,7 @@ export default function DashboardPage() {
                 key={b.id}
                 block={b}
                 entryDate={entryDate}
-                isCurrent={b.hour_start <= now && b.hour_end > now}
+                isCurrent={isToday && b.hour_start <= now && b.hour_end > now}
                 expanded={expanded === b.id}
                 onToggle={() => setExpanded(expanded === b.id ? null : b.id)}
                 onSave={handleSaveBlock}

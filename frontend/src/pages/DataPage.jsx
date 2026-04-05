@@ -657,6 +657,106 @@ export default function DataPage() {
           })}
         </div>
       </div>
+
+      {/* Financial Config */}
+      <FinancialConfigCard />
+    </div>
+  );
+}
+
+// ── Financial config card ─────────────────────────────────────────────────────
+
+const PHASES = [
+  { value: 'PHASE_1', label: 'Phase 1 — Rental' },
+  { value: 'PHASE_2', label: 'Phase 2 — Owned Vehicle' },
+  { value: 'PHASE_3', label: 'Phase 3 — Contracting' },
+];
+
+function FinancialConfigCard() {
+  const [config, setConfig] = useState(null);
+  const [form, setForm] = useState({});
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get('/metrics/reports/config').then(async (r) => {
+      if (r.ok) {
+        const c = await r.json();
+        setConfig(c);
+        setForm(c);
+      }
+    });
+  }, []);
+
+  function update(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setDirty(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const r = await api.put('/metrics/reports/config', form);
+    if (r.ok) {
+      const c = await r.json();
+      setConfig(c);
+      setForm(c);
+      setDirty(false);
+    }
+    setSaving(false);
+  }
+
+  if (!config) return null;
+
+  return (
+    <div className="metal-card overflow-hidden">
+      <div className="px-4 py-3 border-b border-obsidian-700">
+        <h2 className="text-sm font-semibold text-ink-100">Financial Config</h2>
+        <p className="text-xs text-ink-500 mt-0.5">
+          Phase, vehicle cost, monthly nut, bankroll, and tax rates. These drive all report calculations.
+        </p>
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Phase</label>
+            <select className="arc-input text-sm font-light" value={form.phase} onChange={(e) => update('phase', e.target.value)}>
+              {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Weekly Vehicle Cost</label>
+            <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono"
+              value={form.weekly_vehicle_cost} onChange={(e) => update('weekly_vehicle_cost', Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Monthly Nut</label>
+            <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono"
+              value={form.monthly_nut} onChange={(e) => update('monthly_nut', Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Bankroll Remaining</label>
+            <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono"
+              value={form.bankroll_remaining} onChange={(e) => update('bankroll_remaining', Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">SE Tax Rate</label>
+            <input type="number" step="0.0001" min="0" max="1" className="arc-input text-sm font-light font-mono"
+              value={form.se_tax_rate} onChange={(e) => update('se_tax_rate', Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">IRS Mileage Rate</label>
+            <input type="number" step="0.0001" min="0" max="2" className="arc-input text-sm font-light font-mono"
+              value={form.irs_mileage_rate} onChange={(e) => update('irs_mileage_rate', Number(e.target.value))} />
+          </div>
+        </div>
+
+        {dirty && (
+          <button type="button" onClick={handleSave} disabled={saving} className="btn-primary text-xs gap-1.5 w-full">
+            {saving ? 'Saving…' : 'Save Config'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

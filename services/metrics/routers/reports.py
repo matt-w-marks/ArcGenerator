@@ -143,12 +143,7 @@ def _safe_div(num: float, den: float) -> float:
 
 # ── 1. Summary ────────────────────────────────────────────────────────────────
 
-@router.get("/summary", response_model=SummaryResponse)
-def report_summary(
-    db: Session = Depends(get_db),
-    from_date: date = Query(..., alias="from"),
-    to_date: date = Query(..., alias="to"),
-):
+def _summary(db: Session, from_date: date, to_date: date) -> SummaryResponse:
     logs = (
         db.query(DailyBlockLog)
         .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date)
@@ -194,14 +189,14 @@ def report_summary(
     )
 
 
+@router.get("/summary", response_model=SummaryResponse)
+def report_summary(db: Session = Depends(get_db), from_date: date = Query(..., alias="from"), to_date: date = Query(..., alias="to")):
+    return _summary(db, from_date, to_date)
+
+
 # ── 2. By Day ─────────────────────────────────────────────────────────────────
 
-@router.get("/by-day", response_model=list[DayRow])
-def report_by_day(
-    db: Session = Depends(get_db),
-    from_date: date = Query(..., alias="from"),
-    to_date: date = Query(..., alias="to"),
-):
+def _by_day(db: Session, from_date: date, to_date: date) -> list[DayRow]:
     entries = (
         db.query(CalendarEntry)
         .filter(CalendarEntry.entry_date >= from_date, CalendarEntry.entry_date <= to_date)
@@ -255,14 +250,14 @@ def report_by_day(
     return rows
 
 
+@router.get("/by-day", response_model=list[DayRow])
+def report_by_day(db: Session = Depends(get_db), from_date: date = Query(..., alias="from"), to_date: date = Query(..., alias="to")):
+    return _by_day(db, from_date, to_date)
+
+
 # ── 3. By Zone ─────────────────────────────────────────────────────────────────
 
-@router.get("/by-zone", response_model=list[ZoneRow])
-def report_by_zone(
-    db: Session = Depends(get_db),
-    from_date: date = Query(..., alias="from"),
-    to_date: date = Query(..., alias="to"),
-):
+def _by_zone(db: Session, from_date: date, to_date: date) -> list[ZoneRow]:
     results = (
         db.query(
             ScheduleBlock.zone_id,
@@ -299,14 +294,14 @@ def report_by_zone(
     return sorted(rows, key=lambda r: r.per_hour, reverse=True)
 
 
+@router.get("/by-zone", response_model=list[ZoneRow])
+def report_by_zone(db: Session = Depends(get_db), from_date: date = Query(..., alias="from"), to_date: date = Query(..., alias="to")):
+    return _by_zone(db, from_date, to_date)
+
+
 # ── 4. By Platform ────────────────────────────────────────────────────────────
 
-@router.get("/by-platform", response_model=list[PlatformRow])
-def report_by_platform(
-    db: Session = Depends(get_db),
-    from_date: date = Query(..., alias="from"),
-    to_date: date = Query(..., alias="to"),
-):
+def _by_platform(db: Session, from_date: date, to_date: date) -> list[PlatformRow]:
     results = (
         db.query(
             DailyPlatformEarning.platform_id,
@@ -338,14 +333,14 @@ def report_by_platform(
     return sorted(rows, key=lambda r: r.total_earnings, reverse=True)
 
 
+@router.get("/by-platform", response_model=list[PlatformRow])
+def report_by_platform(db: Session = Depends(get_db), from_date: date = Query(..., alias="from"), to_date: date = Query(..., alias="to")):
+    return _by_platform(db, from_date, to_date)
+
+
 # ── 5. Expenses ────────────────────────────────────────────────────────────────
 
-@router.get("/expenses", response_model=ExpensesResponse)
-def report_expenses(
-    db: Session = Depends(get_db),
-    from_date: date = Query(..., alias="from"),
-    to_date: date = Query(..., alias="to"),
-):
+def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
     results = (
         db.query(
             DailyExpense.category,
@@ -374,10 +369,14 @@ def report_expenses(
     )
 
 
+@router.get("/expenses", response_model=ExpensesResponse)
+def report_expenses(db: Session = Depends(get_db), from_date: date = Query(..., alias="from"), to_date: date = Query(..., alias="to")):
+    return _expenses(db, from_date, to_date)
+
+
 # ── 6. Weekly ──────────────────────────────────────────────────────────────────
 
-@router.get("/weekly", response_model=WeeklyResponse)
-def report_weekly(db: Session = Depends(get_db)):
+def _weekly(db: Session) -> WeeklyResponse:
     today = date.today()
     mon = _monday_of_week(today)
     sun = mon + timedelta(days=6)
@@ -411,10 +410,14 @@ def report_weekly(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/weekly", response_model=WeeklyResponse)
+def report_weekly(db: Session = Depends(get_db)):
+    return _weekly(db)
+
+
 # ── 7. Financial Health ────────────────────────────────────────────────────────
 
-@router.get("/financial-health", response_model=FinancialHealthResponse)
-def report_financial_health(db: Session = Depends(get_db)):
+def _financial_health(db: Session) -> FinancialHealthResponse:
     config = db.query(SystemConfig).first()
     today = date.today()
     year_start = date(today.year, 1, 1)
@@ -484,10 +487,14 @@ def report_financial_health(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/financial-health", response_model=FinancialHealthResponse)
+def report_financial_health(db: Session = Depends(get_db)):
+    return _financial_health(db)
+
+
 # ── 8. Job Search ──────────────────────────────────────────────────────────────
 
-@router.get("/job-search", response_model=JobSearchResponse)
-def report_job_search(db: Session = Depends(get_db)):
+def _job_search(db: Session) -> JobSearchResponse:
     today = date.today()
     mon = _monday_of_week(today)
     sun = mon + timedelta(days=6)
@@ -505,10 +512,14 @@ def report_job_search(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/job-search", response_model=JobSearchResponse)
+def report_job_search(db: Session = Depends(get_db)):
+    return _job_search(db)
+
+
 # ── 9. Tax Summary ────────────────────────────────────────────────────────────
 
-@router.get("/tax-summary", response_model=TaxSummaryResponse)
-def report_tax_summary(db: Session = Depends(get_db), year: int = Query(default=None)):
+def _tax_summary(db: Session, year: int | None = None) -> TaxSummaryResponse:
     today = date.today()
     yr = year or today.year
     year_start = date(yr, 1, 1)
@@ -560,6 +571,11 @@ def report_tax_summary(db: Session = Depends(get_db), year: int = Query(default=
     )
 
 
+@router.get("/tax-summary", response_model=TaxSummaryResponse)
+def report_tax_summary(db: Session = Depends(get_db), year: int = Query(default=None)):
+    return _tax_summary(db, year)
+
+
 # ── Batched dashboard — single call for the Reports page ──────────────────────
 
 class DashboardBatchResponse(BaseModel):
@@ -581,15 +597,15 @@ def report_dashboard(
 ):
     """Single endpoint returning all report data. Reduces 9 API calls to 1."""
     return DashboardBatchResponse(
-        summary=report_summary(db=db, from_date=from_date, to_date=to_date),
-        by_day=report_by_day(db=db, from_date=from_date, to_date=to_date),
-        by_zone=report_by_zone(db=db, from_date=from_date, to_date=to_date),
-        by_platform=report_by_platform(db=db, from_date=from_date, to_date=to_date),
-        expenses=report_expenses(db=db, from_date=from_date, to_date=to_date),
-        weekly=report_weekly(db=db),
-        financial_health=report_financial_health(db=db),
-        job_search=report_job_search(db=db),
-        tax_summary=report_tax_summary(db=db),
+        summary=_summary(db, from_date, to_date),
+        by_day=_by_day(db, from_date, to_date),
+        by_zone=_by_zone(db, from_date, to_date),
+        by_platform=_by_platform(db, from_date, to_date),
+        expenses=_expenses(db, from_date, to_date),
+        weekly=_weekly(db),
+        financial_health=_financial_health(db),
+        job_search=_job_search(db),
+        tax_summary=_tax_summary(db),
     )
 
 
