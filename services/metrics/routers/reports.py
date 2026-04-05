@@ -157,11 +157,20 @@ def _summary(db: Session, from_date: date, to_date: date) -> SummaryResponse:
         .all()
     )
     log_ids = [l.id for l in logs]
-    expenses = (
+    daily_exp = float(
         db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
         .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None))
         .scalar()
     ) if log_ids else 0
+
+    # Business expenses (standalone)
+    from models import BusinessExpense
+    biz_exp = float(
+        db.query(sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
+        .filter(BusinessExpense.date >= from_date, BusinessExpense.date <= to_date, BusinessExpense.deleted_at.is_(None))
+        .scalar()
+    )
+    expenses = daily_exp + biz_exp
 
     # Planned gross from template blocks for assigned days
     planned = (
@@ -348,30 +357,55 @@ def report_by_platform(db: Session = Depends(get_db), from_date: date = Query(..
 # ── 5. Expenses ────────────────────────────────────────────────────────────────
 
 def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
-    results = (
+    # Daily (shift-level) expenses
+    daily_results = (
         db.query(
             DailyExpense.category,
             sqf.sum(DailyExpense.amount).label("total"),
             sqf.count(DailyExpense.id).label("count"),
         )
         .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
+        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None), DailyExpense.deleted_at.is_(None))
         .group_by(DailyExpense.category)
         .all()
     )
 
-    total = sum(float(r.total) for r in results)
+    # Business (standalone) expenses
+    from models import BusinessExpense
+    biz_results = (
+        db.query(
+            BusinessExpense.budget_category,
+            sqf.sum(BusinessExpense.amount).label("total"),
+            sqf.count(BusinessExpense.id).label("count"),
+        )
+        .filter(BusinessExpense.date >= from_date, BusinessExpense.date <= to_date, BusinessExpense.deleted_at.is_(None))
+        .group_by(BusinessExpense.budget_category)
+        .all()
+    )
+
+    # Combine into unified category map
+    cat_map = {}
+    for r in daily_results:
+        cat_map[r.category] = cat_map.get(r.category, {"total": 0, "count": 0})
+        cat_map[r.category]["total"] += float(r.total)
+        cat_map[r.category]["count"] += r.count
+    for r in biz_results:
+        cat_map[r.budget_category] = cat_map.get(r.budget_category, {"total": 0, "count": 0})
+        cat_map[r.budget_category]["total"] += float(r.total)
+        cat_map[r.budget_category]["count"] += r.count
+
+    total = sum(v["total"] for v in cat_map.values())
     gross = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.actual_gross), 0))
         .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
-    gas = sum(float(r.total) for r in results if r.category == "gas")
+    gas = cat_map.get("gas", {}).get("total", 0) + cat_map.get("fuel", {}).get("total", 0)
 
     return ExpensesResponse(
         from_date=from_date, to_date=to_date,
         total=round(total, 2),
-        by_category=[ExpenseCatRow(category=r.category, total=round(float(r.total), 2), count=r.count) for r in results],
+        by_category=[ExpenseCatRow(category=cat, total=round(v["total"], 2), count=v["count"]) for cat, v in cat_map.items()],
         gas_pct_of_gross=round(gas / gross * 100, 1) if gross > 0 else 0,
     )
 
