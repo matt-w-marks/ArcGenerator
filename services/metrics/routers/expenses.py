@@ -40,6 +40,7 @@ class ExpenseCreate(BaseModel):
     amount: float = Field(ge=0)
     vendor: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=256)
+    vehicle_id: UUID | None = None
     notes: str | None = None
 
 class ExpenseUpdate(BaseModel):

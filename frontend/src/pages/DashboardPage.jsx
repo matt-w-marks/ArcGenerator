@@ -167,7 +167,7 @@ function PlatformEarningForm({ blockId, entryDate, platforms, onAdd }) {
 
 // ── Block card ───────────────────────────────────────────────────────────────
 
-function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, onAddExpense, onDeleteExpense, onAddPlatformEarning, onDeletePlatformEarning, platforms }) {
+function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, onAddExpense, onDeleteExpense, onAddPlatformEarning, onDeletePlatformEarning, platforms, vehicles }) {
   const log = block.daily_log || {};
   const [form, setForm] = useState({});
   const [dirty, setDirty] = useState(false);
@@ -182,6 +182,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
       odometer_end: log.odometer_end ?? '',
       surge_active: log.surge_active ?? false,
       log_notes: log.log_notes ?? '',
+      vehicle_id: log.vehicle_id ?? '',
     });
     setDirty(false);
   }, [block]);
@@ -198,6 +199,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
     if (form.odometer_end !== '') data.odometer_end = Number(form.odometer_end);
     data.surge_active = form.surge_active;
     if (form.log_notes) data.log_notes = form.log_notes;
+    if (form.vehicle_id) data.vehicle_id = form.vehicle_id;
     await onSave(block.id, data);
     setDirty(false);
   }
@@ -294,12 +296,22 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
 
           {miles != null && <p className="text-[10px] text-ink-500 flex items-center gap-1"><Car size={10} /> {miles} miles</p>}
 
-          {/* Surge toggle */}
-          <div className="flex items-center gap-2">
+          {/* Surge toggle + Vehicle selector */}
+          <div className="flex items-center gap-3 flex-wrap">
             <button type="button" onClick={() => update('surge_active', !form.surge_active)}
               className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${form.surge_active ? 'bg-ember/15 text-ember' : 'bg-obsidian-700 text-ink-400'}`}>
               {form.surge_active ? 'Surge Active' : 'No Surge'}
             </button>
+            {vehicles && vehicles.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide">Vehicle</label>
+                <select className="arc-input text-xs font-light py-1 w-40"
+                  value={form.vehicle_id || ''} onChange={(e) => update('vehicle_id', e.target.value || null)}>
+                  <option value="">No vehicle</option>
+                  {vehicles.map((v) => <option key={v.id} value={v.id}>{v.display_name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Notes */}
@@ -357,6 +369,7 @@ export default function DashboardPage() {
   const [dayData, setDayData] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [platforms, setPlatforms] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [noSchedule, setNoSchedule] = useState(false);
   const [error, setError] = useState('');
@@ -372,9 +385,10 @@ export default function DashboardPage() {
 
   const loadDay = useCallback(async () => {
     const ds = format(selectedDate, 'yyyy-MM-dd');
-    const [dayRes, platRes] = await Promise.all([
+    const [dayRes, platRes, vehRes] = await Promise.all([
       api.get(`/metrics/shift-log/${ds}`),
       api.get('/metrics/platforms?include_inactive=false'),
+      api.get('/metrics/fleet/vehicles'),
     ]);
     if (!dayRes.ok) { setNoSchedule(true); setDayData(null); setBlocks([]); return; }
     const data = await dayRes.json();
@@ -383,6 +397,7 @@ export default function DashboardPage() {
     setNoSchedule(false);
     setExpanded(null);
     if (platRes.ok) setPlatforms(await platRes.json());
+    if (vehRes.ok) setVehicles(await vehRes.json());
   }, [selectedDate]);
 
   useEffect(() => { loadDay(); }, [loadDay]);
@@ -471,6 +486,7 @@ export default function DashboardPage() {
                 onAddPlatformEarning={handleAddPlatformEarning}
                 onDeletePlatformEarning={handleDeletePlatformEarning}
                 platforms={platforms}
+                vehicles={vehicles}
               />
             ))}
           </div>

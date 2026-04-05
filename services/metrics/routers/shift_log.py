@@ -66,6 +66,7 @@ class BlockLogUpdate(BaseModel):
     odometer_end: float | None = Field(default=None, ge=0)
     surge_active: bool | None = None
     log_notes: str | None = None
+    vehicle_id: UUID | None = None
 
 class BlockLogDeleteRequest(BaseModel):
     entry_date: date
@@ -84,6 +85,7 @@ class DailyLogResponse(BaseModel):
     surge_active: bool = False
     active_hours: float | None = None
     log_notes: str | None = None
+    vehicle_id: UUID | None = None
     expenses: list[ExpenseResponse] = []
     platform_earnings: list[PlatformEarningResponse] = []
 
@@ -191,6 +193,7 @@ def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogRespons
         surge_active=log.surge_active,
         active_hours=float(log.active_hours) if log.active_hours is not None else None,
         log_notes=log.log_notes,
+        vehicle_id=log.vehicle_id,
         expenses=[ExpenseResponse.model_validate(e) for e in active_expenses],
         platform_earnings=pe_list,
     )
