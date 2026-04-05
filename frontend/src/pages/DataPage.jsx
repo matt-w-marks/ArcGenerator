@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 const CATEGORIES = ['rides', 'food', 'other'];
 
@@ -471,6 +472,7 @@ function NewChecklistForm({ checklistType, onAdd, onCancel }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DataPage() {
+  const { user } = useAuth();
   const [platforms,       setPlatforms]       = useState([]);
   const [showInactive,    setShowInactive]    = useState(false);
   const [checklists,      setChecklists]      = useState([]);
@@ -658,11 +660,11 @@ export default function DataPage() {
         </div>
       </div>
 
-      {/* Financial Config */}
-      <FinancialConfigCard />
+      {/* Financial Config — admin only */}
+      {user?.role === 'ADMIN' && <FinancialConfigCard />}
 
-      {/* Audit History */}
-      <AuditHistoryCard />
+      {/* Audit History — admin only */}
+      {user?.role === 'ADMIN' && <AuditHistoryCard />}
     </div>
   );
 }

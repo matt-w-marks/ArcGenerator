@@ -11,21 +11,24 @@ import {
   CalendarDays,
   Database,
   BarChart3,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
+// roles: which roles can see this nav item. If omitted, all roles can see it.
 const NAV_SECTIONS = [
   {
     label: null,
     items: [
       { to: '/', label: 'Shift Log', icon: LayoutDashboard, end: true },
-      { to: '/schedule', label: 'Schedule', icon: CalendarDays },
+      { to: '/schedule', label: 'Schedule', icon: CalendarDays, roles: ['ADMIN', 'OPERATOR'] },
       { to: '/reports', label: 'Reports', icon: BarChart3 },
     ],
   },
   {
     label: 'Revenue',
+    roles: ['ADMIN', 'OPERATOR'],
     items: [
       { to: '/driving', label: 'Driving', icon: Car },
       { to: '/jobs',    label: 'Contract Work', icon: Briefcase },
@@ -33,14 +36,17 @@ const NAV_SECTIONS = [
   },
   {
     label: 'Financial',
+    roles: ['ADMIN', 'OPERATOR'],
     items: [
       { to: '/finances', label: 'Finances', icon: DollarSign },
     ],
   },
   {
     label: 'System',
+    roles: ['ADMIN'],
     items: [
       { to: '/data', label: 'Data', icon: Database },
+      { to: '/users', label: 'Users', icon: Users },
     ],
   },
 ];
@@ -102,21 +108,28 @@ export default function Sidebar({ onClose, collapsed = false }) {
 
       {/* Main nav */}
       <nav className={`flex-1 py-4 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
-        {NAV_SECTIONS.map((section, i) => (
-          <div key={i} className={i > 0 ? 'mt-4' : ''}>
-            {!collapsed && section.label && (
-              <p className="section-label px-3 mb-1">{section.label}</p>
-            )}
-            {collapsed && section.label && (
-              <div className="border-t border-obsidian-700/50 my-2" />
-            )}
-            <div className="space-y-1">
-              {section.items.map((item) => (
-                <NavItem key={item.to} {...item} collapsed={collapsed} />
-              ))}
+        {NAV_SECTIONS.map((section, i) => {
+          // Hide entire section if role doesn't match
+          if (section.roles && !section.roles.includes(user?.role)) return null;
+          // Filter items by role
+          const visibleItems = section.items.filter((item) => !item.roles || item.roles.includes(user?.role));
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={i} className={i > 0 ? 'mt-4' : ''}>
+              {!collapsed && section.label && (
+                <p className="section-label px-3 mb-1">{section.label}</p>
+              )}
+              {collapsed && section.label && (
+                <div className="border-t border-obsidian-700/50 my-2" />
+              )}
+              <div className="space-y-1">
+                {visibleItems.map((item) => (
+                  <NavItem key={item.to} {...item} collapsed={collapsed} />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Bottom section */}

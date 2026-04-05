@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency, round1 } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -218,7 +219,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
       style={block.platform_colors?.length > 0 ? { borderLeftWidth: 4, borderLeftColor: block.platform_colors[0] } : undefined}
     >
       {/* Collapsed header */}
-      <button type="button" onClick={onToggle} className="w-full flex items-center gap-2 px-4 py-3 text-left">
+      <button type="button" onClick={onToggle || undefined} className={`w-full flex items-center gap-2 px-4 py-3 text-left ${onToggle ? '' : 'cursor-default'}`}>
         <Icon size={14} className="shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -239,7 +240,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
             {totalExp > 0 && <span className="text-error">· -{formatCurrency(totalExp)}</span>}
           </div>
         </div>
-        {expanded ? <ChevronUp size={14} className="text-ink-400 shrink-0" /> : <ChevronDown size={14} className="text-ink-400 shrink-0" />}
+        {onToggle && (expanded ? <ChevronUp size={14} className="text-ink-400 shrink-0" /> : <ChevronDown size={14} className="text-ink-400 shrink-0" />)}
       </button>
 
       {/* Expanded body */}
@@ -350,6 +351,8 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const canEdit = user?.role === 'ADMIN' || user?.role === 'OPERATOR';
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dayData, setDayData] = useState(null);
   const [blocks, setBlocks] = useState([]);
@@ -460,8 +463,8 @@ export default function DashboardPage() {
                 block={b}
                 entryDate={entryDate}
                 isCurrent={isToday && b.hour_start <= now && b.hour_end > now}
-                expanded={expanded === b.id}
-                onToggle={() => setExpanded(expanded === b.id ? null : b.id)}
+                expanded={canEdit && expanded === b.id}
+                onToggle={canEdit ? () => setExpanded(expanded === b.id ? null : b.id) : undefined}
                 onSave={handleSaveBlock}
                 onAddExpense={handleAddExpense}
                 onDeleteExpense={handleDeleteExpense}

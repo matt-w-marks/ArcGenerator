@@ -9,6 +9,8 @@ import FinancesPage from './pages/FinancesPage';
 import SchedulePage from './pages/SchedulePage';
 import DataPage from './pages/DataPage';
 import ReportsPage from './pages/ReportsPage';
+import UsersPage from './pages/UsersPage';
+import InvitePage from './pages/InvitePage';
 
 function ProtectedRoutes() {
   const { isAuthenticated, loading } = useAuth();
@@ -46,6 +48,7 @@ export default function App() {
         <Routes>
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/invite/:token" element={<InvitePage />} />
           </Route>
           <Route element={<ProtectedRoutes />}>
             <Route index element={<DashboardPage />} />
@@ -55,6 +58,7 @@ export default function App() {
             <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/data" element={<DataPage />} />
+            <Route path="/users" element={<UsersPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
