@@ -127,8 +127,9 @@ function ProgressRing({ pct, size = 48, stroke = 4, color = '#38bdf8' }) {
 // ── Scorecard View ───────────────────────────────────────────────────────────
 
 function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform, byZone, taxSummary, jobSearch }) {
+  const rangeDays = summary ? Math.max(1, summary.days_worked || 1) : 1;
   const dailyTarget = financial ? financial.monthly_nut / 30 : 116.67;
-  const netPct = summary ? Math.round(summary.total_net / dailyTarget * 100) : 0;
+  const netPct = summary ? Math.round(summary.total_net / (dailyTarget * rangeDays) * 100) : 0;
   const tripPct = weekly ? Math.round(weekly.trips_this_week / weekly.trips_target * 100) : 0;
   const perHourStatus = summary && financial
     ? summary.avg_per_hour >= financial.breakeven_per_hour * 1.5 ? 'good' : summary.avg_per_hour >= financial.breakeven_per_hour ? 'warning' : 'bad'
@@ -152,7 +153,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
               {summary ? formatCurrency(summary.total_net) : '$—'} <BasisTag basis="NET" />
             </p>
             <p className="text-xs text-ink-400 flex items-center gap-2">
-              {netPct}% of {formatCurrency(dailyTarget)} daily target
+              {netPct}% of {formatCurrency(dailyTarget * rangeDays)} target ({rangeDays}d × {formatCurrency(dailyTarget)})
               {netChange != null && <TrendBadge value={netChange} />}
             </p>
           </div>
@@ -229,12 +230,12 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
       {/* Quick stats grid */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
-          { l: 'Gross', v: formatCurrency(summary?.total_gross || 0), b: 'GROSS', d: 'Total earnings before any expenses are deducted.', f: 'SUM(actual_gross)' },
-          { l: 'Expenses', v: formatCurrency(summary?.total_expenses || 0), b: 'EXPENSE', c: 'text-error', d: 'All logged expenses: gas, tolls, parking, food, etc.', f: 'SUM(expenses.amount)' },
-          { l: 'Trips', v: summary?.total_trips || 0, d: 'Total completed rides/deliveries across all platforms.', f: 'SUM(trip_count)' },
-          { l: 'Miles', v: round1(summary?.total_miles || 0), d: 'Total miles driven. Used for IRS mileage deduction at $0.725/mi.', f: 'SUM(odometer_end - odometer_start)' },
-          { l: 'Hours', v: `${summary?.total_active_hours || 0}h`, d: 'Active driving hours (actual start to actual end per block).', f: 'SUM(actual_end - actual_start)' },
-          { l: '$/mile', v: `$${summary?.avg_per_mile || 0}`, b: 'GROSS', d: 'Gross earnings per mile driven. Higher = less dead miles.', f: 'gross / miles_driven' },
+          { l: 'Gross', v: formatCurrency(summary?.total_gross || 0), b: 'GROSS', d: 'Total earnings before any expenses are deducted.', f: 'SUM(actual_gross) from daily_block_logs' },
+          { l: 'Expenses', v: formatCurrency(summary?.total_expenses || 0), b: 'EXPENSE', c: 'text-error', d: 'All logged expenses: gas, tolls, parking, food, etc.', f: 'SUM(amount) from daily_expenses' },
+          { l: 'Trips', v: summary?.total_trips || 0, d: 'Total completed rides/deliveries across all platforms.', f: 'SUM(trip_count) from daily_block_logs' },
+          { l: 'Miles', v: round1(summary?.total_miles || 0), d: 'Total miles driven. Auto-calculated from odometer readings. Used for IRS deduction at $0.725/mi.', f: 'SUM(miles_driven) where miles_driven = odo_end − odo_start' },
+          { l: 'Hours', v: `${summary?.total_active_hours || 0}h`, d: 'Active driving hours. Auto-calculated from actual start/end times logged per block.', f: 'SUM(active_hours) where active_hours = actual_end − actual_start' },
+          { l: '$/trip', v: `$${summary?.avg_per_trip || 0}`, b: 'GROSS', d: 'Average gross earnings per completed trip. Higher = better ride selection.', f: 'total_gross / total_trips' },
         ].map((s, i) => (
           <div key={i} className="metal-card px-2.5 py-2">
             <p className="text-[8px] text-ink-600 uppercase tracking-wide flex items-center gap-1">
@@ -251,7 +252,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {byDay.length > 0 && (
           <div className="metal-card p-4">
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2">Net Trend</p>
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">Net Trend <BasisTag basis="NET" /></p>
             <div style={{ height: 160 }}>
               <Line data={{
                 labels: byDay.map((d) => format(new Date(d.date + 'T00:00'), 'EEE')),
@@ -266,7 +267,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
         )}
         {byPlatform.length > 0 && (
           <div className="metal-card p-4">
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2">Platform Split</p>
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">Platform Split <BasisTag basis="GROSS" /></p>
             <div style={{ height: 160 }}>
               <Doughnut data={{
                 labels: byPlatform.map((p) => p.platform_name),
@@ -350,9 +351,9 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
       <Section
         title="Your Earnings"
         insight={summary && summary.days_worked > 0
-          ? `You made ${netStr} net across ${daysStr} day${summary.days_worked > 1 ? 's' : ''}, averaging ${perHrStr}/hr over ${hoursStr} active hours.${
-            trendWord ? ` Trending ${trendWord} from ${yesterdayNet != null ? formatCurrency(yesterdayNet) : 'yesterday'}.` : ''
-          }${summary.variance >= 0 ? ` You're ${formatCurrency(summary.variance)} ahead of plan.` : ` You're ${formatCurrency(Math.abs(summary.variance))} behind plan.`}`
+          ? `You netted ${netStr} (${grossStr} gross − ${formatCurrency(summary.total_expenses)} expenses) across ${daysStr} day${summary.days_worked > 1 ? 's' : ''}, averaging ${perHrStr}/hr gross over ${hoursStr} active hours.${
+            trendWord ? ` Trending ${trendWord} from ${yesterdayNet != null ? formatCurrency(yesterdayNet) + ' net' : 'yesterday'}.` : ''
+          }${summary.variance >= 0 ? ` You're ${formatCurrency(summary.variance)} ahead of plan (gross).` : ` You're ${formatCurrency(Math.abs(summary.variance))} behind plan (gross).`}`
           : 'No shift data logged yet for this period. Start logging on the Shift Log page.'
         }
       >
@@ -396,8 +397,8 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
         <Section
           title="What's Working"
           insight={[
-            bestZone ? `Best zone: ${bestZone.zone_name?.split('—')[0]?.trim()} at $${bestZone.per_hour}/hr.` : '',
-            topPlatform ? `Top platform: ${topPlatform.platform_name} with ${formatCurrency(topPlatform.total_earnings)} (${topPlatform.total_trips} trips, $${topPlatform.avg_per_trip}/trip avg).` : '',
+            bestZone ? `Best zone: ${bestZone.zone_name?.split('—')[0]?.trim()} at $${bestZone.per_hour}/hr gross.` : '',
+            topPlatform ? `Top platform: ${topPlatform.platform_name} with ${formatCurrency(topPlatform.total_earnings)} gross (${topPlatform.total_trips} trips, $${topPlatform.avg_per_trip}/trip avg).` : '',
             bestDay ? `Best day: ${format(new Date(bestDay.date + 'T00:00'), 'EEEE')} at ${formatCurrency(bestDay.net)} net.` : '',
           ].filter(Boolean).join(' ')}
         >
