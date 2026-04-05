@@ -256,7 +256,6 @@ export default function FinancesPage() {
           <h1 className="page-title">Finances</h1>
           <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), 'MMMM yyyy')}</p>
         </div>
-        {tab === 'expenses' && <AddExpenseForm onAdd={load} />}
       </div>
 
       {/* Tab bar */}
@@ -271,14 +270,15 @@ export default function FinancesPage() {
         ))}
       </div>
 
-      {/* Financial Reporting — budget overview cards and spending summary */}
+      {/* Financial Reporting — budget cards + full expense ledger */}
       {tab === 'reporting' && (
         <>
           <BudgetOverview summary={summary} onUpdateBudget={async (cat, amt) => {
             await api.put(`/metrics/expenses/budgets/${cat}`, { monthly_amount: amt });
             load();
           }} />
-          {summary.every((r) => r.spent === 0) && (
+          <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
+          {summary.every((r) => r.spent === 0) && expenses.length === 0 && (
             <div className="metal-card px-6 py-8 text-center">
               <p className="text-ink-400 text-sm">No spending data yet this month.</p>
               <p className="text-ink-500 text-xs mt-1">Log expenses or set up recurring costs to see budget tracking here.</p>
@@ -287,18 +287,47 @@ export default function FinancesPage() {
         </>
       )}
 
-      {/* Expenses — one-time ledger + recurring, all in one place */}
+      {/* Expenses — recurring section + one-time section */}
       {tab === 'expenses' && (
         <>
           <RecurringPage />
-          <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
-          {expenses.length === 0 && (
-            <div className="metal-card px-6 py-8 text-center">
-              <Receipt size={24} className="text-ink-500 mx-auto mb-2" />
-              <p className="text-ink-400 text-sm">No one-time expenses logged yet.</p>
-              <p className="text-ink-500 text-xs mt-1">Use "Add Expense" above for vehicle supplies, tech costs, etc.</p>
+
+          {/* One-time expenses */}
+          <div className="flex items-center justify-between mt-6">
+            <div>
+              <h2 className="text-sm font-semibold text-ink-100">One-Time Expenses</h2>
+              <p className="text-xs text-ink-500 mt-0.5">Individual purchases not on a recurring schedule.</p>
             </div>
-          )}
+            <AddExpenseForm onAdd={load} />
+          </div>
+
+          {/* One-time expense list */}
+          <div className="metal-card overflow-hidden">
+            <div className="max-h-80 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+              {expenses.length === 0 && (
+                <p className="text-xs text-ink-500 px-4 py-6 text-center">No one-time expenses logged yet.</p>
+              )}
+              {expenses.map((e) => (
+                <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-arc/10 text-arc border border-arc/20 uppercase">
+                        {BUDGET_LABELS[e.budget_category]?.slice(0, 10) || e.budget_category}
+                      </span>
+                      {e.vendor && <span className="text-xs text-ink-200 truncate">{e.vendor}</span>}
+                      {e.has_receipt && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
+                    </div>
+                    {e.description && <p className="text-[10px] text-ink-500 truncate mt-0.5">{e.description}</p>}
+                  </div>
+                  <span className="text-xs font-normal font-mono text-error shrink-0">{formatCurrency(e.amount)}</span>
+                  <span className="text-[10px] text-ink-500 font-mono shrink-0">{formatDate(e.date)}</span>
+                  <button onClick={() => handleDelete(e.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors shrink-0">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </>
       )}
 
