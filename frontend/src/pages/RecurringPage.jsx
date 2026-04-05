@@ -26,8 +26,6 @@ export default function RecurringPage() {
   const [error, setError] = useState('');
 
   async function load() {
-    // Auto-generate pending entries, then load
-    await api.post('/metrics/expenses/recurring/generate');
     const r = await api.get('/metrics/expenses/recurring');
     if (r.ok) setItems(await r.json());
   }

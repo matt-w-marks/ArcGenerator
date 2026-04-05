@@ -345,14 +345,19 @@ def _actuals_for_month(db: Session, month: str) -> dict:
 def list_budget_items(db: Session = Depends(get_db), month: str = Query(default=None)):
     if not month:
         month = date.today().strftime("%Y-%m")
-    items = db.query(BudgetItem).filter(BudgetItem.month == month).order_by(BudgetItem.budget_category, BudgetItem.name).all()
+    items = db.query(BudgetItem).filter(BudgetItem.month == month).order_by(BudgetItem.expected_date, BudgetItem.name).all()
     cm = _cat_map(db)
     actuals = _actuals_for_month(db, month)
     results = []
     for item in items:
-        actual = actuals["by_item"].get(item.id, 0)
-        if actual == 0:
-            actual = actuals["by_cat"].get(item.budget_category, 0)
+        if item.recurring_expense_id:
+            # Recurring = the planned amount IS the actual (fixed known cost)
+            actual = float(item.planned_amount)
+        else:
+            # One-time: check linked expenses, then fall back to category match
+            actual = actuals["by_item"].get(item.id, 0)
+            if actual == 0:
+                actual = actuals["by_cat"].get(item.budget_category, 0)
         results.append(_item_response(item, actual, cm))
     return results
 
@@ -584,16 +589,6 @@ def delete_recurring(rec_id: UUID, db: Session = Depends(get_db), user_id: UUID 
     }))
     db.commit()
 
-@router.post("/recurring/generate", dependencies=[require_role("ADMIN")])
-def force_generate(db: Session = Depends(get_db), month: str = Query(default=None)):
-    if not month:
-        month = date.today().strftime("%Y-%m")
-    count = generate_recurring_for_month(db, month)
-    return {"generated": count, "month": month}
-
-
-# ── Auto-generation helper ────────────────────────────────────────────────────
-
 def _add_months(d: date, months: int) -> date:
     """Add months to a date, clamping day to valid range."""
     m = d.month - 1 + months
@@ -602,49 +597,6 @@ def _add_months(d: date, months: int) -> date:
     from calendar import monthrange
     day = min(d.day, monthrange(y, m)[1])
     return date(y, m, day)
-
-def generate_recurring_for_month(db: Session, month: str) -> int:
-    from calendar import monthrange
-    from datetime import timedelta
-    year, mon = map(int, month.split("-"))
-    last_day = date(year, mon, monthrange(year, mon)[1])
-    first_day = date(year, mon, 1)
-    recs = db.query(RecurringExpense).filter(
-        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None),
-        RecurringExpense.start_date <= last_day,
-    ).all()
-    count = 0
-    for rec in recs:
-        current = rec.start_date
-        end = rec.end_date if rec.end_date and rec.end_date < last_day else last_day
-        generated_any = False
-        while current <= end:
-            if current >= first_day and (rec.last_generated is None or current > rec.last_generated):
-                db.add(BusinessExpense(
-                    date=current, budget_category=rec.budget_category, amount=rec.amount,
-                    vendor=rec.vendor, description="[auto] " + (rec.description or rec.vendor or rec.budget_category),
-                    created_by=rec.created_by,
-                ))
-                count += 1
-                generated_any = True
-            # Advance by frequency
-            if rec.frequency == "weekly":
-                current = current + timedelta(weeks=1)
-            elif rec.frequency == "biweekly":
-                current = current + timedelta(weeks=2)
-            elif rec.frequency == "monthly":
-                current = _add_months(current, 1)
-            elif rec.frequency == "quarterly":
-                current = _add_months(current, 3)
-            elif rec.frequency == "annual":
-                current = _add_months(current, 12)
-            else:
-                break
-        if generated_any:
-            rec.last_generated = last_day
-    if count > 0:
-        db.commit()
-    return count
 
 
 # ── Projection helpers (used by reports) ──────────────────────────────────────
