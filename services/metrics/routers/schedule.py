@@ -41,7 +41,6 @@ class BlockCreate(BaseModel):
     notes:         str | None = None
     sort_order:    int   = 0
     gross_revenue: float = Field(default=0, ge=0)
-    actual_gross:  float | None = Field(default=None, ge=0)
     platform_ids:  list[UUID] = []
 
 
