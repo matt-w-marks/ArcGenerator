@@ -164,7 +164,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
         <div className="flex items-center gap-4 mb-4">
           <ProgressRing pct={netPct} size={56} stroke={5} />
           <div>
-            <p className="text-2xl font-bold font-mono text-ink-50 flex items-center gap-2">
+            <p className="text-2xl font-normal font-mono text-ink-300 flex items-center gap-2">
               {summary ? formatCurrency(summary.total_net) : '$—'} <BasisTag basis="NET" />
               <InfoTip basis="NET"
                 description="Your net earnings — what you actually keep after all logged expenses (gas, tolls, parking, food, etc.) are subtracted from gross."
@@ -405,15 +405,15 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
         >
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <p className="text-lg font-bold font-mono text-ink-100">{weekly.trips_this_week}</p>
+              <p className="text-lg font-normal font-mono text-ink-300">{weekly.trips_this_week}</p>
               <p className="text-[9px] text-ink-500">trips</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold font-mono text-ink-100">{round1(weekly.miles)}</p>
+              <p className="text-lg font-normal font-mono text-ink-300">{round1(weekly.miles)}</p>
               <p className="text-[9px] text-ink-500">miles</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold font-mono text-ink-100">{round1(weekly.active_hours)}h</p>
+              <p className="text-lg font-normal font-mono text-ink-300">{round1(weekly.active_hours)}h</p>
               <p className="text-[9px] text-ink-500">active hours</p>
             </div>
           </div>
@@ -519,14 +519,14 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
               </p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold font-mono text-ember">{formatCurrency(financial.se_tax_accrued)}</p>
+              <p className="text-lg font-normal font-mono text-ember">{formatCurrency(financial.se_tax_accrued)}</p>
               <p className="text-[9px] text-ink-500 flex items-center justify-center gap-1">
                 SE Tax Set-Aside
                 <InfoTip basis="EXPENSE" description="Self-employment tax you owe on all gross earnings. Set this aside — do not spend it. Due quarterly." formula={`total_gross_ytd × ${(financial.se_tax_rate * 100).toFixed(1)}%`} />
               </p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold font-mono text-ink-100">{formatCurrency(financial.mileage_deduction_ytd)}</p>
+              <p className="text-lg font-normal font-mono text-ink-300">{formatCurrency(financial.mileage_deduction_ytd)}</p>
               <p className="text-[9px] text-ink-500 flex items-center justify-center gap-1">
                 IRS Mileage Deduction
                 <InfoTip description="Tax deduction for business miles driven. Reduces your taxable income at the IRS standard rate." formula={`total_miles_ytd × $${financial.irs_mileage_rate}/mi`} />

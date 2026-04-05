@@ -68,12 +68,12 @@ function SummaryBar({ blocks, dayData }) {
         )}
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Planned</p><p className="text-base font-bold text-ink-100 font-mono">{formatCurrency(totalPlanned)}</p></div>
-        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Actual</p><p className="text-base font-bold text-ink-100 font-mono">{formatCurrency(totalActual)}</p></div>
-        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Expenses</p><p className="text-base font-bold text-error font-mono">{formatCurrency(totalExpenses)}</p></div>
-        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Net</p><p className={`text-base font-bold font-mono ${net >= 0 ? 'text-success' : 'text-error'}`}>{formatCurrency(net)}</p></div>
-        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Trips</p><p className="text-base font-bold text-ink-100">{totalTrips}</p></div>
-        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Miles</p><p className="text-base font-bold text-ink-100 font-mono">{round1(totalMiles)}</p></div>
+        <div><p className="text-[10px] text-ink-50 uppercase tracking-wide font-bold">Planned</p><p className="text-base font-normal text-ink-300 font-mono">{formatCurrency(totalPlanned)}</p></div>
+        <div><p className="text-[10px] text-ink-50 uppercase tracking-wide font-bold">Actual</p><p className="text-base font-normal text-ink-300 font-mono">{formatCurrency(totalActual)}</p></div>
+        <div><p className="text-[10px] text-ink-50 uppercase tracking-wide font-bold">Expenses</p><p className="text-base font-normal text-error font-mono">{formatCurrency(totalExpenses)}</p></div>
+        <div><p className="text-[10px] text-ink-50 uppercase tracking-wide font-bold">Net</p><p className={`text-base font-normal font-mono ${net >= 0 ? 'text-success' : 'text-error'}`}>{formatCurrency(net)}</p></div>
+        <div><p className="text-[10px] text-ink-50 uppercase tracking-wide font-bold">Trips</p><p className="text-base font-normal text-ink-300">{totalTrips}</p></div>
+        <div><p className="text-[10px] text-ink-50 uppercase tracking-wide font-bold">Miles</p><p className="text-base font-normal text-ink-300 font-mono">{round1(totalMiles)}</p></div>
       </div>
     </div>
   );
