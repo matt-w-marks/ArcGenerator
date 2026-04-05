@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from audit import audit, diff, snapshot, get_user_id
 from database import get_db
+from role_guard import require_role
 from models import (
     CalendarEntry, Schedule, ScheduleBlock, Platform,
     DailyBlockLog, DailyExpense, DailyPlatformEarning,
@@ -289,15 +290,15 @@ def _reload_log(db: Session, log_id: UUID) -> tuple[DailyBlockLog, dict]:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.get("/today", response_model=DayLogResponse)
+@router.get("/today", response_model=DayLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 def get_today(db: Session = Depends(get_db)):
     return _load_day(db, date.today())
 
-@router.get("/{entry_date}", response_model=DayLogResponse)
+@router.get("/{entry_date}", response_model=DayLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 def get_day(entry_date: date, db: Session = Depends(get_db)):
     return _load_day(db, entry_date)
 
-@router.put("/blocks/{block_id}", response_model=DailyLogResponse)
+@router.put("/blocks/{block_id}", response_model=DailyLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
@@ -340,7 +341,7 @@ def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends
     return _build_daily_log_response(log, pmap)
 
 
-@router.delete("/blocks/{block_id}", status_code=204)
+@router.delete("/blocks/{block_id}", status_code=204, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def soft_delete_block_log(block_id: UUID, body: BlockLogDeleteRequest, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     """Soft delete a daily block log for a specific date."""
     log = (
@@ -363,7 +364,7 @@ def soft_delete_block_log(block_id: UUID, body: BlockLogDeleteRequest, db: Sessi
 
 # ── Expenses ──────────────────────────────────────────────────────────────────
 
-@router.post("/blocks/{block_id}/expenses", response_model=ExpenseResponse, status_code=201)
+@router.post("/blocks/{block_id}/expenses", response_model=ExpenseResponse, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def add_expense(block_id: UUID, body: ExpenseCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     if not db.get(ScheduleBlock, block_id):
         raise HTTPException(status_code=404, detail="Block not found")
@@ -383,7 +384,7 @@ def add_expense(block_id: UUID, body: ExpenseCreate, db: Session = Depends(get_d
     db.refresh(expense)
     return expense
 
-@router.delete("/expenses/{expense_id}", status_code=204)
+@router.delete("/expenses/{expense_id}", status_code=204, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def delete_expense(expense_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     exp = db.get(DailyExpense, expense_id)
     if exp is None or exp.deleted_at is not None:
@@ -399,7 +400,7 @@ def delete_expense(expense_id: UUID, db: Session = Depends(get_db), user_id: UUI
 
 # ── Platform earnings ─────────────────────────────────────────────────────────
 
-@router.post("/blocks/{block_id}/platform-earnings", response_model=PlatformEarningResponse, status_code=201)
+@router.post("/blocks/{block_id}/platform-earnings", response_model=PlatformEarningResponse, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
@@ -452,7 +453,7 @@ def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Ses
         trip_count=pe.trip_count,
     )
 
-@router.delete("/platform-earnings/{earning_id}", status_code=204)
+@router.delete("/platform-earnings/{earning_id}", status_code=204, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def delete_platform_earning(earning_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     pe = db.get(DailyPlatformEarning, earning_id)
     if pe is None or pe.deleted_at is not None:

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
+from role_guard import require_role
 from models.checklist import Checklist
 from models.checklist_item import ChecklistItem
 from models.checklist_log import ChecklistLog
@@ -163,12 +164,12 @@ def _load_checklist(db: Session, checklist_id: UUID) -> Checklist:
 
 # ── Maintenance records ───────────────────────────────────────────────────────
 
-@router.get("/records", response_model=list[RecordResponse])
+@router.get("/records", response_model=list[RecordResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_records(db: Session = Depends(get_db)):
     return db.query(MaintenanceRecord).order_by(MaintenanceRecord.service_date.desc()).all()
 
 
-@router.post("/records", response_model=RecordResponse, status_code=201)
+@router.post("/records", response_model=RecordResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def create_record(body: RecordCreate, db: Session = Depends(get_db)):
     rec = MaintenanceRecord(**body.model_dump())
     db.add(rec)
@@ -177,7 +178,7 @@ def create_record(body: RecordCreate, db: Session = Depends(get_db)):
     return rec
 
 
-@router.put("/records/{record_id}", response_model=RecordResponse)
+@router.put("/records/{record_id}", response_model=RecordResponse, dependencies=[require_role('ADMIN')])
 def update_record(record_id: UUID, body: RecordUpdate, db: Session = Depends(get_db)):
     rec = db.get(MaintenanceRecord, record_id)
     if rec is None:
@@ -189,7 +190,7 @@ def update_record(record_id: UUID, body: RecordUpdate, db: Session = Depends(get
     return rec
 
 
-@router.delete("/records/{record_id}", status_code=204)
+@router.delete("/records/{record_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_record(record_id: UUID, db: Session = Depends(get_db)):
     rec = db.get(MaintenanceRecord, record_id)
     if rec is None:
@@ -200,7 +201,7 @@ def delete_record(record_id: UUID, db: Session = Depends(get_db)):
 
 # ── Checklists ────────────────────────────────────────────────────────────────
 
-@router.get("/checklists", response_model=list[ChecklistResponse])
+@router.get("/checklists", response_model=list[ChecklistResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_checklists(checklist_type: str | None = None, db: Session = Depends(get_db)):
     q = db.query(Checklist).options(joinedload(Checklist.items))
     if checklist_type:
@@ -209,7 +210,7 @@ def list_checklists(checklist_type: str | None = None, db: Session = Depends(get
     return [ChecklistResponse.from_checklist(c) for c in checklists]
 
 
-@router.post("/checklists", response_model=ChecklistResponse, status_code=201)
+@router.post("/checklists", response_model=ChecklistResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def create_checklist(body: ChecklistCreate, db: Session = Depends(get_db)):
     c = Checklist(**body.model_dump())
     db.add(c)
@@ -217,7 +218,7 @@ def create_checklist(body: ChecklistCreate, db: Session = Depends(get_db)):
     return ChecklistResponse.from_checklist(_load_checklist(db, c.id))
 
 
-@router.put("/checklists/{checklist_id}", response_model=ChecklistResponse)
+@router.put("/checklists/{checklist_id}", response_model=ChecklistResponse, dependencies=[require_role('ADMIN')])
 def update_checklist(checklist_id: UUID, body: ChecklistUpdate, db: Session = Depends(get_db)):
     c = db.get(Checklist, checklist_id)
     if c is None:
@@ -228,7 +229,7 @@ def update_checklist(checklist_id: UUID, body: ChecklistUpdate, db: Session = De
     return ChecklistResponse.from_checklist(_load_checklist(db, checklist_id))
 
 
-@router.delete("/checklists/{checklist_id}", status_code=204)
+@router.delete("/checklists/{checklist_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_checklist(checklist_id: UUID, db: Session = Depends(get_db)):
     c = db.get(Checklist, checklist_id)
     if c is None:
@@ -239,7 +240,7 @@ def delete_checklist(checklist_id: UUID, db: Session = Depends(get_db)):
 
 # ── Checklist items ───────────────────────────────────────────────────────────
 
-@router.post("/checklists/{checklist_id}/items", response_model=ChecklistItemResponse, status_code=201)
+@router.post("/checklists/{checklist_id}/items", response_model=ChecklistItemResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def add_item(checklist_id: UUID, body: ChecklistItemCreate, db: Session = Depends(get_db)):
     if not db.get(Checklist, checklist_id):
         raise HTTPException(status_code=404, detail="Checklist not found")
@@ -250,7 +251,7 @@ def add_item(checklist_id: UUID, body: ChecklistItemCreate, db: Session = Depend
     return item
 
 
-@router.put("/checklist-items/{item_id}", response_model=ChecklistItemResponse)
+@router.put("/checklist-items/{item_id}", response_model=ChecklistItemResponse, dependencies=[require_role('ADMIN')])
 def update_item(item_id: UUID, body: ChecklistItemUpdate, db: Session = Depends(get_db)):
     item = db.get(ChecklistItem, item_id)
     if item is None:
@@ -262,7 +263,7 @@ def update_item(item_id: UUID, body: ChecklistItemUpdate, db: Session = Depends(
     return item
 
 
-@router.delete("/checklist-items/{item_id}", status_code=204)
+@router.delete("/checklist-items/{item_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_item(item_id: UUID, db: Session = Depends(get_db)):
     item = db.get(ChecklistItem, item_id)
     if item is None:
@@ -273,7 +274,7 @@ def delete_item(item_id: UUID, db: Session = Depends(get_db)):
 
 # ── Checklist logs ────────────────────────────────────────────────────────────
 
-@router.get("/checklist-logs", response_model=list[ChecklistLogResponse])
+@router.get("/checklist-logs", response_model=list[ChecklistLogResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_logs(
     checklist_id: UUID | None = None,
     log_date: date | None = None,
@@ -289,7 +290,7 @@ def list_logs(
     return [ChecklistLogResponse.from_log(l) for l in logs]
 
 
-@router.post("/checklist-logs", response_model=ChecklistLogResponse, status_code=201)
+@router.post("/checklist-logs", response_model=ChecklistLogResponse, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def create_log(body: ChecklistLogCreate, db: Session = Depends(get_db)):
     log = ChecklistLog(**body.model_dump())
     db.add(log)
@@ -298,7 +299,7 @@ def create_log(body: ChecklistLogCreate, db: Session = Depends(get_db)):
     return ChecklistLogResponse.from_log(log)
 
 
-@router.delete("/checklist-logs/{log_id}", status_code=204)
+@router.delete("/checklist-logs/{log_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_log(log_id: UUID, db: Session = Depends(get_db)):
     log = db.get(ChecklistLog, log_id)
     if log is None:

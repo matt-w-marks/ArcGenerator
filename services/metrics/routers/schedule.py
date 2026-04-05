@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
+from role_guard import require_role
 from models.calendar_entry import CalendarEntry
 from models.platform import Platform
 from models.schedule import Schedule
@@ -184,7 +185,7 @@ def _block_response(db: Session, b: ScheduleBlock) -> BlockResponse:
 
 # ── Schedules ─────────────────────────────────────────────────────────────────
 
-@router.get("/schedules", response_model=list[ScheduleResponse])
+@router.get("/schedules", response_model=list[ScheduleResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_schedules(db: Session = Depends(get_db)):
     schedules = (
         db.query(Schedule)
@@ -195,7 +196,7 @@ def list_schedules(db: Session = Depends(get_db)):
     return [_schedule_response(db, s) for s in schedules]
 
 
-@router.post("/schedules", response_model=ScheduleResponse, status_code=201)
+@router.post("/schedules", response_model=ScheduleResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def create_schedule(body: ScheduleCreate, db: Session = Depends(get_db)):
     s = Schedule(**body.model_dump())
     db.add(s)
@@ -203,12 +204,12 @@ def create_schedule(body: ScheduleCreate, db: Session = Depends(get_db)):
     return _schedule_response(db, _load_schedule(db, s.id))
 
 
-@router.get("/schedules/{schedule_id}", response_model=ScheduleResponse)
+@router.get("/schedules/{schedule_id}", response_model=ScheduleResponse, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def get_schedule(schedule_id: UUID, db: Session = Depends(get_db)):
     return _schedule_response(db, _load_schedule(db, schedule_id))
 
 
-@router.put("/schedules/{schedule_id}", response_model=ScheduleResponse)
+@router.put("/schedules/{schedule_id}", response_model=ScheduleResponse, dependencies=[require_role('ADMIN')])
 def update_schedule(schedule_id: UUID, body: ScheduleUpdate, db: Session = Depends(get_db)):
     s = db.get(Schedule, schedule_id)
     if s is None:
@@ -219,7 +220,7 @@ def update_schedule(schedule_id: UUID, body: ScheduleUpdate, db: Session = Depen
     return _schedule_response(db, _load_schedule(db, schedule_id))
 
 
-@router.delete("/schedules/{schedule_id}", status_code=204)
+@router.delete("/schedules/{schedule_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_schedule(schedule_id: UUID, db: Session = Depends(get_db)):
     s = db.get(Schedule, schedule_id)
     if s is None:
@@ -230,7 +231,7 @@ def delete_schedule(schedule_id: UUID, db: Session = Depends(get_db)):
 
 # ── Blocks within a schedule ──────────────────────────────────────────────────
 
-@router.post("/schedules/{schedule_id}/blocks", response_model=BlockResponse, status_code=201)
+@router.post("/schedules/{schedule_id}/blocks", response_model=BlockResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def add_block(schedule_id: UUID, body: BlockCreate, db: Session = Depends(get_db)):
     if not db.get(Schedule, schedule_id):
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -240,7 +241,7 @@ def add_block(schedule_id: UUID, body: BlockCreate, db: Session = Depends(get_db
     return _block_response(db, _load_block(db, block.id))
 
 
-@router.put("/blocks/{block_id}", response_model=BlockResponse)
+@router.put("/blocks/{block_id}", response_model=BlockResponse, dependencies=[require_role('ADMIN')])
 def update_block(block_id: UUID, body: BlockUpdate, db: Session = Depends(get_db)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
@@ -255,7 +256,7 @@ def update_block(block_id: UUID, body: BlockUpdate, db: Session = Depends(get_db
     return _block_response(db, _load_block(db, block_id))
 
 
-@router.delete("/blocks/{block_id}", status_code=204)
+@router.delete("/blocks/{block_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_block(block_id: UUID, db: Session = Depends(get_db)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
@@ -266,7 +267,7 @@ def delete_block(block_id: UUID, db: Session = Depends(get_db)):
 
 # ── Calendar entries ──────────────────────────────────────────────────────────
 
-@router.get("/calendar", response_model=list[CalendarEntryResponse])
+@router.get("/calendar", response_model=list[CalendarEntryResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_calendar(month: str, db: Session = Depends(get_db)):
     """Return all entries for a given month. month format: YYYY-MM"""
     try:
@@ -287,7 +288,7 @@ def list_calendar(month: str, db: Session = Depends(get_db)):
     return [CalendarEntryResponse.from_orm_with_name(e) for e in entries]
 
 
-@router.get("/calendar/{entry_date}", response_model=CalendarEntryResponse)
+@router.get("/calendar/{entry_date}", response_model=CalendarEntryResponse, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def get_calendar_entry(entry_date: date, db: Session = Depends(get_db)):
     e = (
         db.query(CalendarEntry)
@@ -300,7 +301,7 @@ def get_calendar_entry(entry_date: date, db: Session = Depends(get_db)):
     return CalendarEntryResponse.from_orm_with_name(e)
 
 
-@router.put("/calendar/{entry_date}", response_model=CalendarEntryResponse)
+@router.put("/calendar/{entry_date}", response_model=CalendarEntryResponse, dependencies=[require_role('ADMIN')])
 def assign_calendar(entry_date: date, body: AssignRequest, db: Session = Depends(get_db)):
     """Assign (or reassign) a schedule to a calendar date."""
     if not db.get(Schedule, body.schedule_id):
@@ -322,7 +323,7 @@ def assign_calendar(entry_date: date, body: AssignRequest, db: Session = Depends
     return CalendarEntryResponse.from_orm_with_name(e)
 
 
-@router.delete("/calendar/{entry_date}", status_code=204)
+@router.delete("/calendar/{entry_date}", status_code=204, dependencies=[require_role('ADMIN')])
 def unassign_calendar(entry_date: date, db: Session = Depends(get_db)):
     e = db.query(CalendarEntry).filter(CalendarEntry.entry_date == entry_date).first()
     if e is None:

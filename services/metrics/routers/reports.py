@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from audit import audit, diff, get_user_id
 from database import get_db
+from role_guard import require_role
 from models import (
     CalendarEntry, DailyBlockLog, DailyExpense, DailyPlatformEarning,
     JobActivity, MaintenanceRecord, Platform, Schedule, ScheduleBlock,
@@ -24,7 +25,7 @@ _log_active = lambda q: q.filter(DailyBlockLog.deleted_at.is_(None))
 _exp_active = lambda q: q.filter(DailyExpense.deleted_at.is_(None))
 _pe_active = lambda q: q.filter(DailyPlatformEarning.deleted_at.is_(None))
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -645,7 +646,7 @@ def get_config(db: Session = Depends(get_db)):
         irs_mileage_rate=round(float(c.irs_mileage_rate), 4),
     )
 
-@router.put("/config", response_model=ConfigResponse)
+@router.put("/config", response_model=ConfigResponse, dependencies=[require_role('ADMIN')])
 def update_config(body: ConfigUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     c = db.query(SystemConfig).first()
     old_state = {

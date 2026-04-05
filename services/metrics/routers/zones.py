@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.event_zone import EventZone, IMPACT_TYPES
 from models.zone import Zone, ZONE_TYPES, SERVICE_TYPES
+from role_guard import require_role
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
@@ -55,12 +56,12 @@ class EventZoneResponse(BaseModel):
 
 # ── Zone endpoints ────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[ZoneResponse])
+@router.get("", response_model=list[ZoneResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_zones(db: Session = Depends(get_db)):
     return db.query(Zone).order_by(Zone.sort_order, Zone.name).all()
 
 
-@router.post("", response_model=ZoneResponse, status_code=201)
+@router.post("", response_model=ZoneResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def create_zone(body: ZoneCreate, db: Session = Depends(get_db)):
     if body.zone_type and body.zone_type not in ZONE_TYPES:
         raise HTTPException(status_code=422, detail=f"zone_type must be one of {ZONE_TYPES}")
@@ -87,7 +88,7 @@ def create_zone(body: ZoneCreate, db: Session = Depends(get_db)):
     return zone
 
 
-@router.delete("/{zone_id}", status_code=204)
+@router.delete("/{zone_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_zone(zone_id: UUID, db: Session = Depends(get_db)):
     zone = db.get(Zone, zone_id)
     if zone is None:
@@ -98,7 +99,7 @@ def delete_zone(zone_id: UUID, db: Session = Depends(get_db)):
 
 # ── Event Zone endpoints ──────────────────────────────────────────────────────
 
-@router.get("/events", response_model=list[EventZoneResponse])
+@router.get("/events", response_model=list[EventZoneResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_events(week_of: date | None = None, db: Session = Depends(get_db)):
     q = db.query(EventZone)
     if week_of:
@@ -106,7 +107,7 @@ def list_events(week_of: date | None = None, db: Session = Depends(get_db)):
     return q.order_by(EventZone.week_of, EventZone.event_name).all()
 
 
-@router.post("/events", response_model=EventZoneResponse, status_code=201)
+@router.post("/events", response_model=EventZoneResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def create_event(body: EventZoneCreate, db: Session = Depends(get_db)):
     if body.impact not in IMPACT_TYPES:
         raise HTTPException(status_code=422, detail=f"impact must be one of {IMPACT_TYPES}")
@@ -120,7 +121,7 @@ def create_event(body: EventZoneCreate, db: Session = Depends(get_db)):
     return ev
 
 
-@router.delete("/events/{event_id}", status_code=204)
+@router.delete("/events/{event_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_event(event_id: UUID, db: Session = Depends(get_db)):
     ev = db.get(EventZone, event_id)
     if ev is None:

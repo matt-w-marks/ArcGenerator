@@ -2,6 +2,7 @@ const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
+const usersRoutes = require('./routes/users');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -22,6 +23,7 @@ if (!process.env.JEST_WORKER_ID) {
   app.use('/auth', authLimiter);
 }
 app.use('/auth', authRoutes);
+app.use('/auth/users', usersRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'auth' });

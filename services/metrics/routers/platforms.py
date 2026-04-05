@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.platform import Platform, CATEGORIES
+from role_guard import require_role
 
 router = APIRouter(prefix="/platforms", tags=["platforms"])
 
@@ -39,7 +40,7 @@ class PlatformResponse(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[PlatformResponse])
+@router.get("", response_model=list[PlatformResponse], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 def list_platforms(include_inactive: bool = False, db: Session = Depends(get_db)):
     q = db.query(Platform)
     if not include_inactive:
@@ -47,7 +48,7 @@ def list_platforms(include_inactive: bool = False, db: Session = Depends(get_db)
     return q.order_by(Platform.sort_order, Platform.name).all()
 
 
-@router.post("", response_model=PlatformResponse, status_code=201)
+@router.post("", response_model=PlatformResponse, status_code=201, dependencies=[require_role('ADMIN')])
 def create_platform(body: PlatformCreate, db: Session = Depends(get_db)):
     p = Platform(**body.model_dump())
     db.add(p)
@@ -56,7 +57,7 @@ def create_platform(body: PlatformCreate, db: Session = Depends(get_db)):
     return p
 
 
-@router.put("/{platform_id}", response_model=PlatformResponse)
+@router.put("/{platform_id}", response_model=PlatformResponse, dependencies=[require_role('ADMIN')])
 def update_platform(platform_id: UUID, body: PlatformUpdate, db: Session = Depends(get_db)):
     p = db.get(Platform, platform_id)
     if p is None:
@@ -68,7 +69,7 @@ def update_platform(platform_id: UUID, body: PlatformUpdate, db: Session = Depen
     return p
 
 
-@router.delete("/{platform_id}", status_code=204)
+@router.delete("/{platform_id}", status_code=204, dependencies=[require_role('ADMIN')])
 def delete_platform(platform_id: UUID, db: Session = Depends(get_db)):
     p = db.get(Platform, platform_id)
     if p is None:

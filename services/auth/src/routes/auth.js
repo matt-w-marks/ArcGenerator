@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
+const Invite = require('../models/Invite');
 const RefreshToken = require('../models/RefreshToken');
 const authService = require('../services/authService');
 const { logEvent } = require('../services/factoryLog');
@@ -136,6 +137,68 @@ router.get('/verify', (req, res, next) => {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    return next(err);
+  }
+});
+
+// GET /auth/invites/:token — validate invite (public, no auth)
+router.get('/invites/:token', async (req, res, next) => {
+  try {
+    const invite = await Invite.findOne({ where: { token: req.params.token } });
+    if (!invite) {
+      return res.status(404).json({ error: 'Invite not found' });
+    }
+    if (invite.used_at) {
+      return res.status(410).json({ error: 'Invite already used' });
+    }
+    if (new Date(invite.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'Invite expired' });
+    }
+    return res.json({ role: invite.role, email: invite.email });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// POST /auth/invites/:token/accept — accept invite, create account (public)
+router.post('/invites/:token/accept', async (req, res, next) => {
+  try {
+    const invite = await Invite.findOne({ where: { token: req.params.token } });
+    if (!invite) {
+      return res.status(404).json({ error: 'Invite not found' });
+    }
+    if (invite.used_at) {
+      return res.status(410).json({ error: 'Invite already used' });
+    }
+    if (new Date(invite.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'Invite expired' });
+    }
+
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'email and password are required' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+
+    const password_hash = await authService.hashPassword(password);
+    const user = await User.create({ id: uuidv4(), email, password_hash, role: invite.role });
+    await invite.update({ used_at: new Date() });
+
+    logEvent('INFO', 'invite accepted — user created', { userId: user.id, email, role: invite.role, inviteId: invite.id });
+
+    return res.status(201).json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+  } catch (err) {
     return next(err);
   }
 });

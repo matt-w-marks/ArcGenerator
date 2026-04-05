@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import AuditLog
+from role_guard import require_role
 
-router = APIRouter(prefix="/audit-logs", tags=["audit"])
+router = APIRouter(prefix="/audit-logs", tags=["audit"], dependencies=[require_role('ADMIN')])
 
 
 class AuditLogResponse(BaseModel):

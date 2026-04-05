@@ -59,6 +59,21 @@ function injectUserHeaders(proxyReq, req) {
   }
 }
 
+// ── /auth/users — JWT required (admin user management) ───────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/auth/users', authedLimiter);
+}
+app.use(
+  '/auth/users',
+  authenticate,
+  createProxyMiddleware({
+    target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
+    changeOrigin: true,
+    pathRewrite: (path) => `/auth/users${path}`,
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
+  })
+);
+
 // ── /auth — public rate limit, no JWT ────────────────────────────────────────
 if (!process.env.JEST_WORKER_ID) {
   app.use('/auth', publicLimiter);
