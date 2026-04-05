@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Numeric, String, Text, func
+from sqlalchemy import Date, DateTime, LargeBinary, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,7 +17,8 @@ class BusinessExpense(Base):
     amount: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False)
     vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    receipt_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    receipt_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    receipt_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

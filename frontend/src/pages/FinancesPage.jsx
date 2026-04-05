@@ -175,7 +175,7 @@ function ExpenseLedger({ expenses, onDelete, onRefresh }) {
                   {BUDGET_LABELS[e.budget_category]?.slice(0, 10) || e.budget_category}
                 </span>
                 {e.vendor && <span className="text-xs text-ink-200 truncate">{e.vendor}</span>}
-                {e.receipt_path && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
+                {e.has_receipt && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
               </div>
               {e.description && <p className="text-[10px] text-ink-500 truncate mt-0.5">{e.description}</p>}
             </div>

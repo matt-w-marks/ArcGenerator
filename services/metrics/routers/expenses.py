@@ -1,13 +1,10 @@
-"""Business expense ledger with budget tracking and receipt uploads."""
+"""Business expense ledger with budget tracking and receipt uploads (DB storage)."""
 
-import os
-import uuid as uuid_mod
 from datetime import date, datetime, timezone
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func as sqf
 from sqlalchemy.orm import Session
@@ -19,8 +16,7 @@ from role_guard import require_role
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
-UPLOADS_DIR = Path("/app/uploads/receipts")
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf"}
+ALLOWED_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 BUDGET_CATEGORIES = [
@@ -61,7 +57,7 @@ class ExpenseResponse(BaseModel):
     amount: float
     vendor: str | None
     description: str | None
-    receipt_path: str | None
+    has_receipt: bool
     notes: str | None
     created_at: str
 
@@ -156,21 +152,17 @@ async def upload_receipt(expense_id: UUID, file: UploadFile = File(...), db: Ses
     if exp is None or exp.deleted_at is not None:
         raise HTTPException(404, "Expense not found")
 
-    ext = Path(file.filename).suffix.lower() if file.filename else ""
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(400, f"File type not allowed. Use: {', '.join(ALLOWED_EXTENSIONS)}")
+    mime = file.content_type or ""
+    if mime not in ALLOWED_MIMES:
+        raise HTTPException(400, f"File type not allowed. Use: {', '.join(ALLOWED_MIMES)}")
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(400, "File too large. Max 10MB.")
 
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid_mod.uuid4()}{ext}"
-    filepath = UPLOADS_DIR / filename
-    filepath.write_bytes(content)
-
-    exp.receipt_path = f"receipts/{filename}"
-    audit(db, "business_expenses", exp.id, "UPDATE", user_id, {"receipt_path": {"old": None, "new": exp.receipt_path}})
+    exp.receipt_data = content
+    exp.receipt_mime = mime
+    audit(db, "business_expenses", exp.id, "UPDATE", user_id, {"receipt": {"old": None, "new": f"{mime} ({len(content)} bytes)"}})
     db.commit()
     db.refresh(exp)
     return _exp_response(exp)
@@ -178,12 +170,9 @@ async def upload_receipt(expense_id: UUID, file: UploadFile = File(...), db: Ses
 @router.get("/{expense_id}/receipt", dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 def get_receipt(expense_id: UUID, db: Session = Depends(get_db)):
     exp = db.get(BusinessExpense, expense_id)
-    if exp is None or exp.deleted_at is not None or not exp.receipt_path:
+    if exp is None or exp.deleted_at is not None or not exp.receipt_data:
         raise HTTPException(404, "Receipt not found")
-    filepath = Path("/app/uploads") / exp.receipt_path
-    if not filepath.exists():
-        raise HTTPException(404, "Receipt file missing")
-    return FileResponse(filepath)
+    return Response(content=exp.receipt_data, media_type=exp.receipt_mime)
 
 
 # ── Budgets ───────────────────────────────────────────────────────────────────
@@ -264,6 +253,6 @@ def _exp_response(e: BusinessExpense) -> ExpenseResponse:
     return ExpenseResponse(
         id=e.id, date=e.date, budget_category=e.budget_category,
         amount=float(e.amount), vendor=e.vendor, description=e.description,
-        receipt_path=e.receipt_path, notes=e.notes,
+        has_receipt=e.receipt_data is not None, notes=e.notes,
         created_at=e.created_at.isoformat(),
     )
