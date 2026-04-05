@@ -6,6 +6,7 @@ import {
 import { api } from '../lib/api';
 import { formatCurrency, formatDate } from '../lib/utils';
 import BudgetsPage from './BudgetsPage';
+import RecurringPage from './RecurringPage';
 
 const BUDGET_LABELS = {
   fuel: 'Fuel', vehicle_maintenance: 'Vehicle Maintenance', vehicle_supplies: 'Vehicle Supplies',
@@ -260,7 +261,7 @@ export default function FinancesPage() {
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-obsidian-700">
-        {[['expenses', 'Expenses'], ['budgets', 'Budgets']].map(([id, label]) => (
+        {[['expenses', 'Expenses'], ['recurring', 'Recurring'], ['budgets', 'Budgets']].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === id ? 'border-arc text-arc' : 'border-transparent text-ink-400 hover:text-ink-200'
@@ -291,6 +292,7 @@ export default function FinancesPage() {
         </>
       )}
 
+      {tab === 'recurring' && <RecurringPage />}
       {tab === 'budgets' && <BudgetsPage />}
     </div>
   );

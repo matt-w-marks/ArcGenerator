@@ -15,8 +15,6 @@ class SystemConfig(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="PHASE_1")
-    weekly_vehicle_cost: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default="416.00")
-    monthly_nut: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default="3500.00")
     bankroll_remaining: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="11000.00")
     se_tax_rate: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, server_default="0.1530")
     irs_mileage_rate: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, server_default="0.7250")

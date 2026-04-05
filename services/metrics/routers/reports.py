@@ -480,9 +480,13 @@ def _financial_health(db: Session) -> FinancialHealthResponse:
         .scalar()
     )
 
-    monthly_nut = float(config.monthly_nut)
+    # Compute monthly nut and weekly vehicle cost from recurring expenses
+    from routers.expenses import get_projected_monthly_cost, get_projected_weekly_vehicle_cost
+    monthly_nut = get_projected_monthly_cost(db)
+    weekly_cost = get_projected_weekly_vehicle_cost(db)
+
     bankroll = float(config.bankroll_remaining)
-    daily_burn = monthly_nut / 30
+    daily_burn = monthly_nut / 30 if monthly_nut > 0 else 0
     runway = bankroll / daily_burn if daily_burn > 0 else 999
 
     se_rate = float(config.se_tax_rate)
@@ -491,7 +495,6 @@ def _financial_health(db: Session) -> FinancialHealthResponse:
     irs_rate = float(config.irs_mileage_rate)
     mileage_ded = round(ytd_miles * irs_rate, 2)
 
-    weekly_cost = float(config.weekly_vehicle_cost)
     # This week's gas
     mon = _monday_of_week(today)
     sun = mon + timedelta(days=6)
@@ -654,16 +657,12 @@ def report_dashboard(
 
 class ConfigResponse(BaseModel):
     phase: str
-    weekly_vehicle_cost: float
-    monthly_nut: float
     bankroll_remaining: float
     se_tax_rate: float
     irs_mileage_rate: float
 
 class ConfigUpdate(BaseModel):
     phase: str | None = None
-    weekly_vehicle_cost: float | None = None
-    monthly_nut: float | None = None
     bankroll_remaining: float | None = None
     se_tax_rate: float | None = None
     irs_mileage_rate: float | None = None
@@ -673,8 +672,6 @@ def get_config(db: Session = Depends(get_db)):
     c = db.query(SystemConfig).first()
     return ConfigResponse(
         phase=c.phase,
-        weekly_vehicle_cost=round(float(c.weekly_vehicle_cost), 2),
-        monthly_nut=round(float(c.monthly_nut), 2),
         bankroll_remaining=round(float(c.bankroll_remaining), 2),
         se_tax_rate=round(float(c.se_tax_rate), 4),
         irs_mileage_rate=round(float(c.irs_mileage_rate), 4),
@@ -684,15 +681,13 @@ def get_config(db: Session = Depends(get_db)):
 def update_config(body: ConfigUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     c = db.query(SystemConfig).first()
     old_state = {
-        "phase": c.phase, "weekly_vehicle_cost": float(c.weekly_vehicle_cost),
-        "monthly_nut": float(c.monthly_nut), "bankroll_remaining": float(c.bankroll_remaining),
+        "phase": c.phase, "bankroll_remaining": float(c.bankroll_remaining),
         "se_tax_rate": float(c.se_tax_rate), "irs_mileage_rate": float(c.irs_mileage_rate),
     }
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(c, field, value)
     new_state = {
-        "phase": c.phase, "weekly_vehicle_cost": float(c.weekly_vehicle_cost),
-        "monthly_nut": float(c.monthly_nut), "bankroll_remaining": float(c.bankroll_remaining),
+        "phase": c.phase, "bankroll_remaining": float(c.bankroll_remaining),
         "se_tax_rate": float(c.se_tax_rate), "irs_mileage_rate": float(c.irs_mileage_rate),
     }
     changes = diff(old_state, new_state)
@@ -702,8 +697,6 @@ def update_config(body: ConfigUpdate, db: Session = Depends(get_db), user_id: UU
     db.refresh(c)
     return ConfigResponse(
         phase=c.phase,
-        weekly_vehicle_cost=round(float(c.weekly_vehicle_cost), 2),
-        monthly_nut=round(float(c.monthly_nut), 2),
         bankroll_remaining=round(float(c.bankroll_remaining), 2),
         se_tax_rate=round(float(c.se_tax_rate), 4),
         irs_mileage_rate=round(float(c.irs_mileage_rate), 4),

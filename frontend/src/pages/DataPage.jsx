@@ -730,16 +730,6 @@ function FinancialConfigCard() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Weekly Vehicle Cost</label>
-            <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono"
-              value={form.weekly_vehicle_cost} onChange={(e) => update('weekly_vehicle_cost', Number(e.target.value))} />
-          </div>
-          <div>
-            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Monthly Nut</label>
-            <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono"
-              value={form.monthly_nut} onChange={(e) => update('monthly_nut', Number(e.target.value))} />
-          </div>
-          <div>
             <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Bankroll Remaining</label>
             <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono"
               value={form.bankroll_remaining} onChange={(e) => update('bankroll_remaining', Number(e.target.value))} />

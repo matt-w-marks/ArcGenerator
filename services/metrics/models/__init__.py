@@ -3,6 +3,7 @@ from .base import Base
 from .budget import Budget
 from .business_expense import BusinessExpense
 from .calendar_entry import CalendarEntry
+from .recurring_expense import RecurringExpense
 from .checklist import Checklist
 from .checklist_item import ChecklistItem
 from .checklist_log import ChecklistLog
@@ -40,6 +41,7 @@ __all__ = [
     "JobActivity",
     "MaintenanceRecord",
     "Platform",
+    "RecurringExpense",
     "Schedule",
     "ScheduleBlock",
     "SystemConfig",

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from audit import audit, diff, snapshot, get_user_id
 from database import get_db
-from models import Budget, BusinessExpense, DailyBlockLog, DailyExpense
+from models import Budget, BusinessExpense, DailyBlockLog, DailyExpense, RecurringExpense
 from role_guard import require_role
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -297,3 +297,181 @@ def _exp_response(e: BusinessExpense) -> ExpenseResponse:
         has_receipt=e.receipt_data is not None, notes=e.notes,
         created_at=e.created_at.isoformat(),
     )
+
+
+# ── Recurring Expenses ────────────────────────────────────────────────────────
+
+FREQUENCIES = ["weekly", "biweekly", "monthly", "quarterly", "annual"]
+FREQ_TO_MONTHLY = {"weekly": 4.3, "biweekly": 2.15, "monthly": 1.0, "quarterly": 1/3, "annual": 1/12}
+
+class RecurringExpenseCreate(BaseModel):
+    budget_category: str
+    amount: float = Field(ge=0)
+    frequency: str
+    vendor: str | None = Field(default=None, max_length=128)
+    description: str | None = Field(default=None, max_length=256)
+    start_date: date
+    end_date: date | None = None
+
+class RecurringExpenseUpdate(BaseModel):
+    amount: float | None = Field(default=None, ge=0)
+    frequency: str | None = None
+    vendor: str | None = None
+    description: str | None = None
+    end_date: date | None = None
+    active: bool | None = None
+
+class RecurringExpenseResponse(BaseModel):
+    id: UUID
+    budget_category: str
+    amount: float
+    frequency: str
+    vendor: str | None
+    description: str | None
+    start_date: date
+    end_date: date | None
+    active: bool
+    last_generated: date | None
+    monthly_projection: float
+    created_at: str
+
+def _recurring_response(r: RecurringExpense) -> RecurringExpenseResponse:
+    mult = FREQ_TO_MONTHLY.get(r.frequency, 1.0)
+    return RecurringExpenseResponse(
+        id=r.id, budget_category=r.budget_category, amount=float(r.amount),
+        frequency=r.frequency, vendor=r.vendor, description=r.description,
+        start_date=r.start_date, end_date=r.end_date, active=r.active,
+        last_generated=r.last_generated, monthly_projection=round(float(r.amount) * mult, 2),
+        created_at=r.created_at.isoformat(),
+    )
+
+@router.get("/recurring", response_model=list[RecurringExpenseResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
+def list_recurring(db: Session = Depends(get_db)):
+    recs = db.query(RecurringExpense).filter(RecurringExpense.deleted_at.is_(None)).order_by(RecurringExpense.budget_category).all()
+    return [_recurring_response(r) for r in recs]
+
+@router.post("/recurring", response_model=RecurringExpenseResponse, status_code=201, dependencies=[require_role("ADMIN")])
+def create_recurring(body: RecurringExpenseCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    if body.frequency not in FREQUENCIES:
+        raise HTTPException(400, "frequency must be one of: " + ", ".join(FREQUENCIES))
+    rec = RecurringExpense(created_by=user_id, **body.model_dump())
+    db.add(rec)
+    db.flush()
+    audit(db, "recurring_expenses", rec.id, "CREATE", user_id, snapshot({
+        "budget_category": body.budget_category, "amount": float(body.amount),
+        "frequency": body.frequency, "vendor": body.vendor,
+    }))
+    db.commit()
+    db.refresh(rec)
+    return _recurring_response(rec)
+
+@router.put("/recurring/{rec_id}", response_model=RecurringExpenseResponse, dependencies=[require_role("ADMIN")])
+def update_recurring(rec_id: UUID, body: RecurringExpenseUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    rec = db.get(RecurringExpense, rec_id)
+    if rec is None or rec.deleted_at is not None:
+        raise HTTPException(404, "Recurring expense not found")
+    if body.frequency and body.frequency not in FREQUENCIES:
+        raise HTTPException(400, "frequency must be one of: " + ", ".join(FREQUENCIES))
+    old = {"amount": float(rec.amount), "frequency": rec.frequency, "active": rec.active}
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(rec, field, value)
+    new = {"amount": float(rec.amount), "frequency": rec.frequency, "active": rec.active}
+    changes = diff(old, new)
+    if changes:
+        audit(db, "recurring_expenses", rec.id, "UPDATE", user_id, changes)
+    db.commit()
+    db.refresh(rec)
+    return _recurring_response(rec)
+
+@router.delete("/recurring/{rec_id}", status_code=204, dependencies=[require_role("ADMIN")])
+def delete_recurring(rec_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    rec = db.get(RecurringExpense, rec_id)
+    if rec is None or rec.deleted_at is not None:
+        raise HTTPException(404, "Recurring expense not found")
+    rec.deleted_at = datetime.now(timezone.utc)
+    rec.deleted_by = user_id
+    audit(db, "recurring_expenses", rec.id, "DELETE", user_id, snapshot({
+        "budget_category": rec.budget_category, "amount": float(rec.amount), "frequency": rec.frequency,
+    }))
+    db.commit()
+
+@router.post("/recurring/generate", dependencies=[require_role("ADMIN")])
+def force_generate(db: Session = Depends(get_db), month: str = Query(default=None)):
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    count = generate_recurring_for_month(db, month)
+    return {"generated": count, "month": month}
+
+
+# ── Auto-generation helper ────────────────────────────────────────────────────
+
+def _add_months(d: date, months: int) -> date:
+    """Add months to a date, clamping day to valid range."""
+    m = d.month - 1 + months
+    y = d.year + m // 12
+    m = m % 12 + 1
+    from calendar import monthrange
+    day = min(d.day, monthrange(y, m)[1])
+    return date(y, m, day)
+
+def generate_recurring_for_month(db: Session, month: str) -> int:
+    from calendar import monthrange
+    from datetime import timedelta
+    year, mon = map(int, month.split("-"))
+    last_day = date(year, mon, monthrange(year, mon)[1])
+    first_day = date(year, mon, 1)
+    recs = db.query(RecurringExpense).filter(
+        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None),
+        RecurringExpense.start_date <= last_day,
+    ).all()
+    count = 0
+    for rec in recs:
+        current = rec.start_date
+        end = rec.end_date if rec.end_date and rec.end_date < last_day else last_day
+        generated_any = False
+        while current <= end:
+            if current >= first_day and (rec.last_generated is None or current > rec.last_generated):
+                db.add(BusinessExpense(
+                    date=current, budget_category=rec.budget_category, amount=rec.amount,
+                    vendor=rec.vendor, description="[auto] " + (rec.description or rec.vendor or rec.budget_category),
+                    created_by=rec.created_by,
+                ))
+                count += 1
+                generated_any = True
+            # Advance by frequency
+            if rec.frequency == "weekly":
+                current = current + timedelta(weeks=1)
+            elif rec.frequency == "biweekly":
+                current = current + timedelta(weeks=2)
+            elif rec.frequency == "monthly":
+                current = _add_months(current, 1)
+            elif rec.frequency == "quarterly":
+                current = _add_months(current, 3)
+            elif rec.frequency == "annual":
+                current = _add_months(current, 12)
+            else:
+                break
+        if generated_any:
+            rec.last_generated = last_day
+    if count > 0:
+        db.commit()
+    return count
+
+
+# ── Projection helpers (used by reports) ──────────────────────────────────────
+
+def get_projected_monthly_cost(db: Session) -> float:
+    recs = db.query(RecurringExpense).filter(
+        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None)).all()
+    return round(sum(float(r.amount) * FREQ_TO_MONTHLY.get(r.frequency, 1.0) for r in recs), 2)
+
+def get_projected_weekly_vehicle_cost(db: Session) -> float:
+    recs = db.query(RecurringExpense).filter(
+        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None),
+        RecurringExpense.budget_category == "vehicle_rental").all()
+    total = 0.0
+    for r in recs:
+        if r.frequency == "weekly": total += float(r.amount)
+        elif r.frequency == "biweekly": total += float(r.amount) / 2
+        elif r.frequency == "monthly": total += float(r.amount) / 4.3
+    return round(total, 2)
