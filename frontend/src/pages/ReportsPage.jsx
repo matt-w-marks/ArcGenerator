@@ -194,7 +194,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <div className="flex items-center gap-2">
             <HealthDot status={perHourStatus} />
             <div>
-              <p className="text-[10px] text-ink-400 font-semibold flex items-center gap-1">
+              <p className="text-[11px] text-ink-100 font-bold flex items-center gap-1">
                 $/hr <BasisTag basis="GROSS" />
                 <InfoTip basis="GROSS"
                   description="Your average gross earnings per active hour driven. Green if 1.5x+ breakeven, yellow if above breakeven, red if below."
@@ -207,7 +207,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <div className="flex items-center gap-2">
             <HealthDot status={gasPctStatus} />
             <div>
-              <p className="text-[10px] text-ink-400 font-semibold flex items-center gap-1">
+              <p className="text-[11px] text-ink-100 font-bold flex items-center gap-1">
                 Gas % <BasisTag basis="EXPENSE" />
                 <InfoTip basis="EXPENSE"
                   description="What percentage of your gross earnings goes to fuel. Above 12% is a red flag — consider cheaper stations or more efficient routing."
@@ -220,7 +220,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <div className="flex items-center gap-2">
             <HealthDot status={runwayStatus} />
             <div>
-              <p className="text-[10px] text-ink-400 font-semibold flex items-center gap-1">
+              <p className="text-[11px] text-ink-100 font-bold flex items-center gap-1">
                 Runway
                 <InfoTip
                   description="How many days your bankroll covers at current monthly burn rate. Green 60+, yellow 30-60, red under 30."
@@ -236,7 +236,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
 
       {/* Quick stats grid */}
       <div>
-        <p className="text-xs text-ink-400 font-semibold uppercase tracking-wide mb-2">Raw Numbers</p>
+        <p className="text-xs text-ink-100 font-bold uppercase tracking-wide mb-2">Raw Numbers</p>
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
@@ -248,7 +248,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           { l: '$/trip', v: `$${summary?.avg_per_trip || 0}`, b: 'GROSS', d: 'Average gross earnings per completed trip. Higher = better ride selection.', f: 'total_gross / total_trips' },
         ].map((s, i) => (
           <div key={i} className="metal-card px-3 py-2.5">
-            <p className="text-[9px] text-ink-400 uppercase tracking-wide font-semibold flex items-center gap-1 mb-0.5">
+            <p className="text-[10px] text-ink-100 uppercase tracking-wide font-bold flex items-center gap-1 mb-0.5">
               {s.l}
               {s.b && <BasisTag basis={s.b} />}
               <InfoTip basis={s.b} description={s.d} formula={s.f} />
@@ -260,11 +260,11 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
 
       {/* Charts row */}
       <div>
-        <p className="text-xs text-ink-400 font-semibold uppercase tracking-wide mb-2">Patterns</p>
+        <p className="text-xs text-ink-100 font-bold uppercase tracking-wide mb-2">Patterns</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="metal-card p-4">
-          <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+          <p className="text-xs text-ink-50 font-bold uppercase tracking-wide mb-2 flex items-center gap-1">
             Net Trend <BasisTag basis="NET" />
             <InfoTip basis="NET" description="Daily net earnings over time. Green dots = profitable days, red dots = loss days. Net = gross minus all expenses for that day." formula="day_net = day_gross − day_expenses" />
           </p>
@@ -285,7 +285,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <p className="text-[9px] text-ink-600 mt-2 italic">Shows if you're improving or declining day over day.</p>
         </div>
         <div className="metal-card p-4">
-          <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+          <p className="text-xs text-ink-50 font-bold uppercase tracking-wide mb-2 flex items-center gap-1">
             Platform Split <BasisTag basis="GROSS" />
             <InfoTip basis="GROSS" description="Gross earnings split by platform (Uber, Lyft, etc.). Based on per-platform earnings logged in each block. Does not subtract expenses." formula="SUM(platform_earnings) per platform" />
           </p>
