@@ -17,6 +17,7 @@ export default function BudgetsPage() {
   const [addName, setAddName] = useState('');
   const [addCat, setAddCat] = useState('');
   const [addAmt, setAddAmt] = useState('');
+  const [addDate, setAddDate] = useState('');
   const [error, setError] = useState('');
 
   const ms = monthStr(month);
@@ -44,6 +45,7 @@ export default function BudgetsPage() {
     setError('');
     const r = await api.post('/metrics/expenses/budget-items', {
       month: ms, name: addName, budget_category: addCat, planned_amount: Number(addAmt),
+      expected_date: addDate || null,
     });
     if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.detail || 'Failed'); return; }
     setShowAdd(false); setAddName(''); setAddCat(''); setAddAmt(''); load();
@@ -140,6 +142,11 @@ export default function BudgetsPage() {
               <input type="number" step="0.01" min="0" required className="arc-input text-sm font-light font-mono"
                 placeholder="$0.00" value={addAmt} onChange={(e) => setAddAmt(e.target.value)} />
             </div>
+            <div>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Expected Date</label>
+              <input type="date" className="arc-input text-sm font-light"
+                value={addDate} onChange={(e) => setAddDate(e.target.value)} />
+            </div>
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowAdd(false)} className="btn-ghost text-xs">Cancel</button>
@@ -154,6 +161,7 @@ export default function BudgetsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-obsidian-600">
+                <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Date</th>
                 <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Expense</th>
                 <th className="text-right text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Planned</th>
                 <th className="text-right text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Actual</th>
@@ -168,6 +176,9 @@ export default function BudgetsPage() {
                 const over = i.variance > 0;
                 return (
                   <tr key={i.id} className="border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors">
+                    <td className="px-4 py-3 text-xs font-mono text-ink-400 whitespace-nowrap">
+                      {i.expected_date ? format(new Date(i.expected_date + 'T00:00'), 'MMM d') : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="text-ink-100 font-medium">{i.name}</span>

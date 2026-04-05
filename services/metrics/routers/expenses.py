@@ -273,6 +273,7 @@ def _cat_map(db: Session) -> dict:
 class BudgetItemResponse(BaseModel):
     id: UUID
     month: str
+    expected_date: date | None
     name: str
     budget_category: str
     category_label: str
@@ -289,7 +290,7 @@ def _item_response(item: BudgetItem, actual: float, cm: dict) -> BudgetItemRespo
     c = cm.get(item.budget_category)
     planned = float(item.planned_amount)
     return BudgetItemResponse(
-        id=item.id, month=item.month, name=item.name,
+        id=item.id, month=item.month, expected_date=item.expected_date, name=item.name,
         budget_category=item.budget_category,
         category_label=c.label if c else item.budget_category,
         planned_amount=planned, actual_amount=round(actual, 2),
@@ -357,6 +358,7 @@ def list_budget_items(db: Session = Depends(get_db), month: str = Query(default=
 
 class BudgetItemCreate(BaseModel):
     month: str = Field(pattern="^\\d{4}-\\d{2}$")
+    expected_date: date | None = None
     name: str = Field(min_length=1, max_length=128)
     budget_category: str
     planned_amount: float = Field(ge=0)
@@ -403,30 +405,49 @@ def delete_budget_item(item_id: UUID, db: Session = Depends(get_db), user_id: UU
 
 @router.post("/budget-items/populate", dependencies=[require_role("ADMIN")])
 def populate_from_recurring(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(...)):
-    """Auto-populate budget items from active recurring expenses."""
+    """Auto-populate budget items from active recurring expenses — one item per occurrence with specific dates."""
     from calendar import monthrange
+    from datetime import timedelta
     year, mon = map(int, month.split("-"))
-    days_in_month = monthrange(year, mon)[1]
+    month_start = date(year, mon, 1)
+    month_end = date(year, mon, monthrange(year, mon)[1])
 
     recs = db.query(RecurringExpense).filter(
-        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None)
+        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None),
+        RecurringExpense.start_date <= month_end,
     ).all()
 
-    existing_names = {i.name for i in db.query(BudgetItem).filter(BudgetItem.month == month).all()}
+    # Check existing items by (name, expected_date) to avoid duplicates
+    existing = {(i.name, i.expected_date) for i in db.query(BudgetItem).filter(BudgetItem.month == month).all()}
     count = 0
     for rec in recs:
         name = rec.vendor or rec.description or rec.budget_category
-        if name in existing_names:
-            continue
-        mult = FREQ_TO_MONTHLY.get(rec.frequency, 1.0)
-        projected = round(float(rec.amount) * mult, 2)
-        db.add(BudgetItem(
-            month=month, name=name, budget_category=rec.budget_category,
-            planned_amount=projected, frequency_note=f"{rec.frequency} @ ${rec.amount}",
-            recurring_expense_id=rec.id, vehicle_id=rec.vehicle_id,
-        ))
-        existing_names.add(name)
-        count += 1
+        current = rec.start_date
+        end = rec.end_date if rec.end_date and rec.end_date < month_end else month_end
+
+        while current <= end:
+            if current >= month_start and (name, current) not in existing:
+                db.add(BudgetItem(
+                    month=month, expected_date=current, name=name,
+                    budget_category=rec.budget_category, planned_amount=float(rec.amount),
+                    frequency_note=rec.frequency,
+                    recurring_expense_id=rec.id, vehicle_id=rec.vehicle_id,
+                ))
+                existing.add((name, current))
+                count += 1
+            # Advance
+            if rec.frequency == "weekly":
+                current += timedelta(weeks=1)
+            elif rec.frequency == "biweekly":
+                current += timedelta(weeks=2)
+            elif rec.frequency == "monthly":
+                current = _add_months(current, 1)
+            elif rec.frequency == "quarterly":
+                current = _add_months(current, 3)
+            elif rec.frequency == "annual":
+                current = _add_months(current, 12)
+            else:
+                break
     if count > 0:
         db.commit()
     return {"populated": count, "month": month}
