@@ -41,7 +41,7 @@ function Stat({ label, value, sub, color }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const [range, setRange] = useState('month');
+  const [range, setRange] = useState('today');
   const [summary, setSummary] = useState(null);
   const [byDay, setByDay] = useState([]);
   const [byZone, setByZone] = useState([]);
@@ -55,6 +55,7 @@ export default function ReportsPage() {
 
   const getRange = useCallback(() => {
     const today = new Date();
+    if (range === 'today') return { from: ds(today), to: ds(today) };
     if (range === 'week') return { from: ds(startOfWeek(today, { weekStartsOn: 1 })), to: ds(today) };
     if (range === 'month') return { from: ds(startOfMonth(today)), to: ds(today) };
     return { from: ds(subDays(today, 6)), to: ds(today) };
@@ -98,7 +99,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <h1 className="page-title">Reports</h1>
         <div className="flex gap-1">
-          {[['week', '7D'], ['month', 'MTD']].map(([k, label]) => (
+          {[['today', 'Today'], ['week', '7D'], ['month', 'MTD']].map(([k, label]) => (
             <button key={k} onClick={() => setRange(k)}
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${range === k ? 'border-arc/40 bg-arc/10 text-arc' : 'border-obsidian-600 text-ink-400 hover:text-ink-50'}`}>
               {label}
