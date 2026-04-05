@@ -105,6 +105,8 @@ class FinancialHealthResponse(BaseModel):
     se_tax_accrued: float
     irs_mileage_rate: float
     total_miles_ytd: float
+    total_hours_ytd: float
+    avg_per_hour_ytd: float
     mileage_deduction_ytd: float
     breakeven_per_hour: float
 
@@ -461,7 +463,9 @@ def report_financial_health(db: Session = Depends(get_db)):
         .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun)
         .scalar()
     )
-    breakeven = _safe_div(weekly_cost + weekly_gas, weekly_hours) if weekly_hours > 0 else _safe_div(weekly_cost, 40)
+    # Breakeven $/hr = total weekly costs / hours worked. Use actual data if available.
+    # If no hours logged yet, estimate with 30hr/week target.
+    breakeven = _safe_div(weekly_cost + weekly_gas, weekly_hours) if weekly_hours > 0 else _safe_div(weekly_cost, 30)
 
     return FinancialHealthResponse(
         phase=config.phase,
@@ -473,6 +477,8 @@ def report_financial_health(db: Session = Depends(get_db)):
         se_tax_accrued=se_accrued,
         irs_mileage_rate=round(irs_rate, 4),
         total_miles_ytd=round(ytd_miles, 1),
+        total_hours_ytd=round(ytd_hours, 2),
+        avg_per_hour_ytd=_safe_div(ytd_gross, ytd_hours),
         mileage_deduction_ytd=mileage_ded,
         breakeven_per_hour=round(breakeven, 2),
     )
