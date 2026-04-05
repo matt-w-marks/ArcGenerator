@@ -151,10 +151,19 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
           <div>
             <p className="text-2xl font-bold font-mono text-ink-50 flex items-center gap-2">
               {summary ? formatCurrency(summary.total_net) : '$—'} <BasisTag basis="NET" />
+              <InfoTip basis="NET"
+                description="Your net earnings — what you actually keep after all logged expenses (gas, tolls, parking, food, etc.) are subtracted from gross."
+                formula="total_gross − total_expenses" />
             </p>
             <p className="text-xs text-ink-400 flex items-center gap-2">
               {netPct}% of {formatCurrency(dailyTarget * rangeDays)} target ({rangeDays}d × {formatCurrency(dailyTarget)})
-              {netChange != null && <TrendBadge value={netChange} />}
+              <InfoTip
+                description="Daily net target derived from your monthly nut. You need this much net per day to cover fixed obligations. Scales by days in the selected range."
+                formula={`monthly_nut / 30 = $${financial?.monthly_nut || 3500} / 30 = ${formatCurrency(dailyTarget)}/day`} />
+              {netChange != null && <>
+                <TrendBadge value={netChange} />
+                <InfoTip description="Percentage change in net earnings compared to the previous day." formula="(today_net − yesterday_net) / yesterday_net × 100" />
+              </>}
             </p>
           </div>
           <div className="ml-auto text-right">
@@ -252,7 +261,10 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {byDay.length > 0 && (
           <div className="metal-card p-4">
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">Net Trend <BasisTag basis="NET" /></p>
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+              Net Trend <BasisTag basis="NET" />
+              <InfoTip basis="NET" description="Daily net earnings over time. Green dots = profitable days, red dots = loss days. Net = gross minus all expenses for that day." formula="day_net = day_gross − day_expenses" />
+            </p>
             <div style={{ height: 160 }}>
               <Line data={{
                 labels: byDay.map((d) => format(new Date(d.date + 'T00:00'), 'EEE')),
@@ -267,7 +279,10 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
         )}
         {byPlatform.length > 0 && (
           <div className="metal-card p-4">
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">Platform Split <BasisTag basis="GROSS" /></p>
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+              Platform Split <BasisTag basis="GROSS" />
+              <InfoTip basis="GROSS" description="Gross earnings split by platform (Uber, Lyft, etc.). Based on per-platform earnings logged in each block. Does not subtract expenses." formula="SUM(platform_earnings) per platform" />
+            </p>
             <div style={{ height: 160 }}>
               <Doughnut data={{
                 labels: byPlatform.map((p) => p.platform_name),
@@ -374,7 +389,7 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
         <Section
           title="Your Week"
           insight={`${weekly.trips_this_week} of ${weekly.trips_target} Hertz trips completed.${
-            weeklyPace ? ` At current pace you'll hit ${weeklyPace >= weeklyTarget ? formatCurrency(weeklyPace) + ' — above' : formatCurrency(weeklyPace) + ' — below'} the ${formatCurrency(weeklyTarget)}/week target.` : ''
+            weeklyPace ? ` At current pace (gross/days × 7) you'll hit ${weeklyPace >= weeklyTarget ? formatCurrency(weeklyPace) + ' gross — above' : formatCurrency(weeklyPace) + ' gross — below'} the ${formatCurrency(weeklyTarget)}/week target (monthly_nut ÷ 4.3).` : ''
           }${weekly.trips_this_week >= weekly.trips_target ? ' Trip minimum met.' : ` Need ${weekly.trips_target - weekly.trips_this_week} more trips.`}`}
         >
           <div className="flex items-center gap-3">
@@ -440,12 +455,15 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
         >
           {expenses && expenses.by_category.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {expenses.by_category.map((c, i) => (
-                <div key={i} className="px-2.5 py-1.5 rounded-lg bg-obsidian-800/60 border border-obsidian-700/50">
-                  <p className="text-[9px] text-ink-500 capitalize">{c.category.replace('_', ' ')}</p>
-                  <p className="text-xs font-mono text-ink-200">{formatCurrency(c.total)}</p>
-                </div>
-              ))}
+              {expenses.by_category.map((c, i) => {
+                const pct = expenses.total > 0 ? Math.round(c.total / expenses.total * 100) : 0;
+                return (
+                  <div key={i} className="px-2.5 py-1.5 rounded-lg bg-obsidian-800/60 border border-obsidian-700/50">
+                    <p className="text-[9px] text-ink-500 capitalize">{c.category.replace('_', ' ')}</p>
+                    <p className="text-xs font-mono text-ink-200">{formatCurrency(c.total)} <span className="text-ink-500">({pct}%)</span></p>
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>
@@ -463,15 +481,24 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
             <div className="text-center">
               <ProgressRing pct={Math.min(100, Math.round(financial.runway_days / 90 * 100))} size={44} stroke={4}
                 color={financial.runway_days >= 60 ? '#22c55e' : financial.runway_days >= 30 ? '#f97316' : '#ef4444'} />
-              <p className="text-[9px] text-ink-500 mt-1">Runway</p>
+              <p className="text-[9px] text-ink-500 mt-1 flex items-center justify-center gap-1">
+                Runway
+                <InfoTip description="Days your bankroll covers at current monthly burn. Green = 60+ days, yellow = 30–60, red = under 30." formula="bankroll / (monthly_nut / 30)" />
+              </p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold font-mono text-ember">{formatCurrency(financial.se_tax_accrued)}</p>
-              <p className="text-[9px] text-ink-500">SE Tax Set-Aside</p>
+              <p className="text-[9px] text-ink-500 flex items-center justify-center gap-1">
+                SE Tax Set-Aside
+                <InfoTip basis="EXPENSE" description="Self-employment tax you owe on all gross earnings. Set this aside — do not spend it. Due quarterly." formula={`total_gross_ytd × ${(financial.se_tax_rate * 100).toFixed(1)}%`} />
+              </p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold font-mono text-ink-100">{formatCurrency(financial.mileage_deduction_ytd)}</p>
-              <p className="text-[9px] text-ink-500">IRS Mileage Deduction</p>
+              <p className="text-[9px] text-ink-500 flex items-center justify-center gap-1">
+                IRS Mileage Deduction
+                <InfoTip description="Tax deduction for business miles driven. Reduces your taxable income at the IRS standard rate." formula={`total_miles_ytd × $${financial.irs_mileage_rate}/mi`} />
+              </p>
             </div>
           </div>
         </Section>
