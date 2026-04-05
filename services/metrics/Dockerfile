@@ -28,6 +28,7 @@ COPY --chown=appuser:appgroup models/      ./models/
 COPY --chown=appuser:appgroup routers/     ./routers/
 COPY --chown=appuser:appgroup schemas/     ./schemas/
 COPY --chown=appuser:appgroup audit.py  database.py  factory_log.py  main.py  role_guard.py  ./
+RUN mkdir -p /app/uploads/receipts && chown -R appuser:appgroup /app/uploads
 
 USER appuser
 
