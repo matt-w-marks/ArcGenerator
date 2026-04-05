@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, Users, Settings } from 'lucide-react';
+import { Database, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import DataPage from './DataPage';
 import UsersPage from './UsersPage';

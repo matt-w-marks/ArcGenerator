@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency, formatDate } from '../lib/utils';
+import BudgetsPage from './BudgetsPage';
 
 const BUDGET_LABELS = {
   fuel: 'Fuel', vehicle_maintenance: 'Vehicle Maintenance', vehicle_supplies: 'Vehicle Supplies',
@@ -225,9 +226,9 @@ function ExpenseLedger({ expenses, onDelete, onRefresh }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function FinancesPage() {
+  const [tab, setTab] = useState('expenses');
   const [summary, setSummary] = useState([]);
   const [expenses, setExpenses] = useState([]);
-  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     const month = thisMonth();
@@ -252,28 +253,45 @@ export default function FinancesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Finances</h1>
-          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), 'MMMM yyyy')} budget overview</p>
+          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), 'MMMM yyyy')}</p>
         </div>
-        <AddExpenseForm onAdd={load} />
+        {tab === 'expenses' && <AddExpenseForm onAdd={load} />}
       </div>
 
-      {/* Budget overview — click allocation to edit */}
-      <BudgetOverview summary={summary} onUpdateBudget={async (cat, amt) => {
-        await api.put(`/metrics/expenses/budgets/${cat}`, { monthly_amount: amt });
-        load();
-      }} />
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-obsidian-700">
+        {[['expenses', 'Expenses'], ['budgets', 'Budgets']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setTab(id)}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === id ? 'border-arc text-arc' : 'border-transparent text-ink-400 hover:text-ink-200'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* Expense ledger */}
-      <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
+      {tab === 'expenses' && (
+        <>
+          {/* Budget overview cards */}
+          <BudgetOverview summary={summary} onUpdateBudget={async (cat, amt) => {
+            await api.put(`/metrics/expenses/budgets/${cat}`, { monthly_amount: amt });
+            load();
+          }} />
 
-      {/* Empty state */}
-      {expenses.length === 0 && summary.every((r) => r.spent === 0) && (
-        <div className="metal-card px-6 py-8 text-center">
-          <Receipt size={24} className="text-ink-500 mx-auto mb-2" />
-          <p className="text-ink-400 text-sm">No business expenses logged yet.</p>
-          <p className="text-ink-500 text-xs mt-1">Use "Add Expense" to log vehicle supplies, tech costs, licensing, etc.</p>
-        </div>
+          {/* Expense ledger */}
+          <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
+
+          {expenses.length === 0 && summary.every((r) => r.spent === 0) && (
+            <div className="metal-card px-6 py-8 text-center">
+              <Receipt size={24} className="text-ink-500 mx-auto mb-2" />
+              <p className="text-ink-400 text-sm">No business expenses logged yet.</p>
+              <p className="text-ink-500 text-xs mt-1">Use "Add Expense" to log vehicle supplies, tech costs, licensing, etc.</p>
+            </div>
+          )}
+        </>
       )}
+
+      {tab === 'budgets' && <BudgetsPage />}
     </div>
   );
 }
