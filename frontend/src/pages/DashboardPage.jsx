@@ -260,32 +260,32 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
           {/* Core metrics form */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
             <div>
-              <label className="text-[10px] text-ink-500 block mb-0.5">Gross Earnings</label>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Gross Earnings</label>
               <input type="number" step="0.01" min="0" className="arc-input text-xs py-1 font-mono w-full"
                 placeholder="$0.00" value={form.actual_gross} onChange={(e) => update('actual_gross', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-500 block mb-0.5">Trip Count</label>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Trip Count</label>
               <input type="number" min="0" className="arc-input text-xs py-1 w-full"
                 placeholder="0" value={form.trip_count} onChange={(e) => update('trip_count', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-500 block mb-0.5">Actual Start</label>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Actual Start</label>
               <input type="time" className="arc-input text-xs py-1 w-full font-mono"
                 value={form.actual_start} onChange={(e) => update('actual_start', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-500 block mb-0.5">Actual End</label>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Actual End</label>
               <input type="time" className="arc-input text-xs py-1 w-full font-mono"
                 value={form.actual_end} onChange={(e) => update('actual_end', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-500 block mb-0.5">Odo Start</label>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Odo Start</label>
               <input type="number" step="0.1" min="0" className="arc-input text-xs py-1 font-mono w-full"
                 placeholder="0.0" value={form.odometer_start} onChange={(e) => update('odometer_start', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-500 block mb-0.5">Odo End</label>
+              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Odo End</label>
               <input type="number" step="0.1" min="0" className="arc-input text-xs py-1 font-mono w-full"
                 placeholder="0.0" value={form.odometer_end} onChange={(e) => update('odometer_end', e.target.value)} />
             </div>
@@ -303,7 +303,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
 
           {/* Notes */}
           <div>
-            <label className="text-[10px] text-ink-500 block mb-0.5">Shift Notes</label>
+            <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-0.5">Shift Notes</label>
             <textarea className="arc-input text-xs resize-none w-full" rows={2} placeholder="Traffic, incidents, observations…"
               value={form.log_notes} onChange={(e) => update('log_notes', e.target.value)} />
           </div>
@@ -317,7 +317,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
 
           {/* Platform earnings */}
           <div>
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-1.5">Platform Breakdown</p>
+            <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide mb-1.5">Platform Breakdown</p>
             <div className="space-y-1.5">
               {(log.platform_earnings || []).map((pe) => (
                 <PlatformEarningRow key={pe.id} pe={pe} onDelete={onDeletePlatformEarning} />
@@ -328,7 +328,7 @@ function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, on
 
           {/* Expenses */}
           <div>
-            <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-1.5">Expenses</p>
+            <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide mb-1.5">Expenses</p>
             <div className="space-y-1">
               {expenses.map((e) => (
                 <div key={e.id} className="flex items-center gap-2 text-xs">
