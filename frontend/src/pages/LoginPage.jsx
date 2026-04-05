@@ -31,7 +31,7 @@ export default function LoginPage() {
             <Map size={28} className="text-arc" />
           </div>
           <h1 className="font-display text-2xl font-bold text-ink-50">ArcGenerator</h1>
-          <p className="text-ink-300 text-sm mt-1">Professional driver operations</p>
+          <p className="text-ink-300 text-sm mt-1">Revenue Generating Streams</p>
         </div>
 
         {/* Card */}
@@ -47,21 +47,21 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="section-label block mb-1.5" htmlFor="email">Email</label>
+              <label className="text-[11px] text-ink-400 font-normal block mb-1.5" htmlFor="email">Email</label>
               <input
                 id="email"
                 type="email"
                 autoComplete="email"
                 required
                 className="arc-input"
-                placeholder="you@example.com"
+                placeholder="username@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="section-label block mb-1.5" htmlFor="password">Password</label>
+              <label className="text-[11px] text-ink-400 font-normal block mb-1.5" htmlFor="password">Password</label>
               <input
                 id="password"
                 type="password"
