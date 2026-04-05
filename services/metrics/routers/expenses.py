@@ -181,26 +181,59 @@ def get_receipt(expense_id: UUID, db: Session = Depends(get_db)):
 
 # ── Budgets ───────────────────────────────────────────────────────────────────
 
+def _budget_response(b: Budget) -> BudgetResponse:
+    return BudgetResponse(id=b.id, budget_category=b.budget_category, monthly_amount=float(b.monthly_amount),
+                          tax_deductible=b.tax_deductible, tax_notes=b.tax_notes, notes=b.notes)
+
 @router.get("/budgets", response_model=list[BudgetResponse], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
-def list_budgets(db: Session = Depends(get_db)):
-    return [BudgetResponse(id=b.id, budget_category=b.budget_category, monthly_amount=float(b.monthly_amount),
-                           tax_deductible=b.tax_deductible, tax_notes=b.tax_notes, notes=b.notes)
-            for b in db.query(Budget).order_by(Budget.budget_category).all()]
+def list_budgets(db: Session = Depends(get_db), month: str = Query(default=None)):
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    return [_budget_response(b) for b in db.query(Budget).filter(Budget.month == month).order_by(Budget.budget_category).all()]
 
 @router.put("/budgets/{category}", response_model=BudgetResponse, dependencies=[require_role('ADMIN')])
-def update_budget(category: str, body: BudgetUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
-    b = db.query(Budget).filter(Budget.budget_category == category).first()
+def update_budget(category: str, body: BudgetUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(default=None)):
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    b = db.query(Budget).filter(Budget.budget_category == category, Budget.month == month).first()
     if b is None:
-        raise HTTPException(404, "Budget category not found")
+        raise HTTPException(404, "Budget not found for that category/month")
     old_amt = float(b.monthly_amount)
     b.monthly_amount = body.monthly_amount
     if body.notes is not None:
         b.notes = body.notes
     if old_amt != body.monthly_amount:
-        audit(db, "budgets", b.id, "UPDATE", user_id, {"monthly_amount": {"old": old_amt, "new": body.monthly_amount}})
+        audit(db, "budgets", b.id, "UPDATE", user_id, {"monthly_amount": {"old": old_amt, "new": body.monthly_amount}, "month": month})
     db.commit()
     db.refresh(b)
-    return BudgetResponse(id=b.id, budget_category=b.budget_category, monthly_amount=float(b.monthly_amount), notes=b.notes)
+    return _budget_response(b)
+
+@router.post("/budgets/copy", dependencies=[require_role('ADMIN')])
+def copy_budgets(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id),
+                 from_month: str = Query(..., alias="from"), to_month: str = Query(..., alias="to")):
+    """Copy all budget allocations from one month to another."""
+    source = db.query(Budget).filter(Budget.month == from_month).all()
+    if not source:
+        raise HTTPException(404, f"No budgets found for {from_month}")
+    existing = db.query(Budget).filter(Budget.month == to_month).all()
+    if existing:
+        raise HTTPException(409, f"Budgets already exist for {to_month}")
+    for b in source:
+        db.add(Budget(
+            budget_category=b.budget_category, month=to_month,
+            monthly_amount=b.monthly_amount, tax_deductible=b.tax_deductible,
+            tax_notes=b.tax_notes, notes=b.notes,
+        ))
+    db.flush()
+    audit(db, "budgets", source[0].id, "CREATE", user_id, {"action": f"copied {len(source)} budgets {from_month} → {to_month}"})
+    db.commit()
+    return {"copied": len(source), "from_month": from_month, "to_month": to_month}
+
+@router.get("/budgets/months", dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+def list_budget_months(db: Session = Depends(get_db)):
+    """List all months that have budgets defined."""
+    rows = db.query(Budget.month).distinct().order_by(Budget.month).all()
+    return [r[0] for r in rows]
 
 @router.get("/budgets/summary", response_model=list[BudgetSummaryRow], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
 def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
@@ -237,7 +270,7 @@ def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
         biz_map[budget_cat] = biz_map.get(budget_cat, 0) + float(amt)
 
     # Build summary with budget allocations
-    budget_objs = {b.budget_category: b for b in db.query(Budget).all()}
+    budget_objs = {b.budget_category: b for b in db.query(Budget).filter(Budget.month == month).all()}
     rows = []
     for cat in BUDGET_CATEGORIES:
         b = budget_objs.get(cat)
