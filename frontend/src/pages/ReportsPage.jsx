@@ -166,17 +166,12 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
               </>}
             </p>
           </div>
-          <div className="ml-auto text-right">
-            <p className="text-sm font-mono text-ink-200 flex items-center gap-1 justify-end">
-              {summary ? `$${summary.avg_per_hour}/hr` : '—'}
-              <BasisTag basis="GROSS" />
-              <InfoTip basis="GROSS" description="Your average earnings per active hour on the road, before expenses." formula="total_gross / active_hours" />
-            </p>
-            <p className="text-[10px] text-ink-500 flex items-center gap-1 justify-end">
-              breakeven: ${financial?.breakeven_per_hour || '—'}/hr
-              <InfoTip basis="EXPENSE" description="The minimum $/hr you need to cover vehicle costs + gas. Below this you're losing money." formula="(weekly_vehicle_cost + weekly_gas) / active_hours" />
-            </p>
-          </div>
+          {summary && summary.days_worked > 0 && (
+            <div className="ml-auto text-right">
+              <p className="text-sm font-mono text-ink-200">{formatCurrency(summary.total_gross)}</p>
+              <p className="text-[10px] text-ink-500">gross before expenses</p>
+            </div>
+          )}
         </div>
 
         {/* Health indicators row */}
@@ -453,6 +448,25 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
               : '',
           ].filter(Boolean).join(' ') || 'No warnings right now.'}
         >
+          {financial && (
+            <div className="flex items-center gap-3 py-2 px-3 rounded-lg bg-obsidian-800/40 border border-obsidian-700/30">
+              <div className="flex-1">
+                <p className="text-[10px] text-ink-500 flex items-center gap-1">
+                  Breakeven $/hr <BasisTag basis="GROSS" />
+                  <InfoTip basis="GROSS" description="The minimum gross $/hr to cover vehicle + gas costs. Use this when planning which zones and hours to target — not during active driving." formula="(weekly_vehicle_cost + weekly_gas) / active_hours" />
+                </p>
+                <p className="text-sm font-mono text-ink-100">${financial.breakeven_per_hour}/hr</p>
+              </div>
+              {summary && summary.avg_per_hour > 0 && (
+                <div className="text-right">
+                  <p className="text-[10px] text-ink-500">Your avg</p>
+                  <p className={`text-sm font-mono ${summary.avg_per_hour >= financial.breakeven_per_hour ? 'text-success' : 'text-error'}`}>
+                    ${summary.avg_per_hour}/hr
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {expenses && expenses.by_category.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {expenses.by_category.map((c, i) => {
