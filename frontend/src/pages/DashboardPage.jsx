@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
   MapPin, Zap, Briefcase, Coffee, StickyNote, ClipboardCheck,
-  DollarSign, Clock, ChevronDown, ChevronUp, Check, AlertCircle,
-  Play, Plus, Trash2, Fuel, Car,
+  ChevronDown, ChevronUp, Check, AlertCircle,
+  Play, Plus, Trash2, Car,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency, round1 } from '../lib/utils';
@@ -11,12 +11,9 @@ import { formatCurrency, round1 } from '../lib/utils';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const BLOCK_STYLES = {
-  zone:      'border-arc/40 text-arc',
-  event:     'border-ember/40 text-ember',
-  job:       'border-neural/40 text-neural',
-  rest:      'border-obsidian-500 text-ink-300',
-  note:      'border-success/30 text-success',
-  checklist: 'border-yellow-500/30 text-yellow-400',
+  zone: 'border-arc/40 text-arc', event: 'border-ember/40 text-ember',
+  job: 'border-neural/40 text-neural', rest: 'border-obsidian-500 text-ink-300',
+  note: 'border-success/30 text-success', checklist: 'border-yellow-500/30 text-yellow-400',
 };
 const BLOCK_BG = {
   zone: 'bg-arc/8', event: 'bg-ember/8', job: 'bg-neural/8',
@@ -27,48 +24,38 @@ const BLOCK_ICONS = {
   note: StickyNote, checklist: ClipboardCheck,
 };
 const EXPENSE_CATS = [
-  { value: 'gas', label: 'Gas' },
-  { value: 'tolls', label: 'Tolls' },
-  { value: 'parking', label: 'Parking' },
-  { value: 'car_wash', label: 'Car Wash' },
-  { value: 'food', label: 'Food' },
-  { value: 'other', label: 'Other' },
+  { value: 'gas', label: 'Gas' }, { value: 'tolls', label: 'Tolls' },
+  { value: 'parking', label: 'Parking' }, { value: 'car_wash', label: 'Car Wash' },
+  { value: 'food', label: 'Food' }, { value: 'other', label: 'Other' },
 ];
 
 function hexToRgba(hex, alpha) {
   if (!hex || hex.length < 7) return `rgba(107,114,128,${alpha})`;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function fmt12h(h) {
-  const h24 = h % 24, hr = Math.floor(h24), half = h24 % 1 !== 0;
-  const m = half ? ':30' : '';
+  const h24 = h % 24, hr = Math.floor(h24), half = h24 % 1 !== 0, m = half ? ':30' : '';
   if (hr === 0) return `12${m} AM`;
   if (hr === 12) return `12${m} PM`;
   return hr < 12 ? `${hr}${m} AM` : `${hr - 12}${m} PM`;
 }
 
-function currentHour() {
-  const n = new Date();
-  return n.getHours() + n.getMinutes() / 60;
-}
+function currentHour() { const n = new Date(); return n.getHours() + n.getMinutes() / 60; }
 
-function todayStr() {
-  return format(new Date(), 'yyyy-MM-dd');
-}
+function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 
 // ── Summary bar ──────────────────────────────────────────────────────────────
 
 function SummaryBar({ blocks, dayData }) {
-  const totalPlanned = blocks.reduce((s, b) => s + (Number(b.gross_revenue) || 0), 0);
-  const totalActual  = blocks.reduce((s, b) => s + (b.actual_gross != null ? Number(b.actual_gross) : 0), 0);
-  const totalExpenses = blocks.reduce((s, b) => s + (b.expenses || []).reduce((es, e) => es + Number(e.amount), 0), 0);
-  const totalTrips   = blocks.reduce((s, b) => s + (b.trip_count || 0), 0);
-  const totalMiles   = blocks.reduce((s, b) => s + (b.miles_driven != null ? Number(b.miles_driven) : 0), 0);
-  const totalHours   = blocks.reduce((s, b) => s + (b.hour_end - b.hour_start), 0);
+  const dl = (b) => b.daily_log || {};
+  const totalPlanned  = blocks.reduce((s, b) => s + (Number(b.gross_revenue) || 0), 0);
+  const totalActual   = blocks.reduce((s, b) => s + (Number(dl(b).actual_gross) || 0), 0);
+  const totalExpenses = blocks.reduce((s, b) => s + (dl(b).expenses || []).reduce((es, e) => es + Number(e.amount), 0), 0);
+  const totalTrips    = blocks.reduce((s, b) => s + (dl(b).trip_count || 0), 0);
+  const totalMiles    = blocks.reduce((s, b) => s + (Number(dl(b).miles_driven) || 0), 0);
+  const totalHours    = blocks.reduce((s, b) => s + (b.hour_end - b.hour_start), 0);
   const net = totalActual - totalExpenses;
 
   return (
@@ -81,30 +68,12 @@ function SummaryBar({ blocks, dayData }) {
         )}
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        <div>
-          <p className="text-[9px] text-ink-500 uppercase tracking-wide">Planned</p>
-          <p className="text-base font-bold text-ink-100 font-mono">{formatCurrency(totalPlanned)}</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-ink-500 uppercase tracking-wide">Actual</p>
-          <p className="text-base font-bold text-ink-100 font-mono">{formatCurrency(totalActual)}</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-ink-500 uppercase tracking-wide">Expenses</p>
-          <p className="text-base font-bold text-error font-mono">{formatCurrency(totalExpenses)}</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-ink-500 uppercase tracking-wide">Net</p>
-          <p className={`text-base font-bold font-mono ${net >= 0 ? 'text-success' : 'text-error'}`}>{formatCurrency(net)}</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-ink-500 uppercase tracking-wide">Trips</p>
-          <p className="text-base font-bold text-ink-100">{totalTrips}</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-ink-500 uppercase tracking-wide">Miles</p>
-          <p className="text-base font-bold text-ink-100 font-mono">{round1(totalMiles)}</p>
-        </div>
+        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Planned</p><p className="text-base font-bold text-ink-100 font-mono">{formatCurrency(totalPlanned)}</p></div>
+        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Actual</p><p className="text-base font-bold text-ink-100 font-mono">{formatCurrency(totalActual)}</p></div>
+        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Expenses</p><p className="text-base font-bold text-error font-mono">{formatCurrency(totalExpenses)}</p></div>
+        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Net</p><p className={`text-base font-bold font-mono ${net >= 0 ? 'text-success' : 'text-error'}`}>{formatCurrency(net)}</p></div>
+        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Trips</p><p className="text-base font-bold text-ink-100">{totalTrips}</p></div>
+        <div><p className="text-[9px] text-ink-500 uppercase tracking-wide">Miles</p><p className="text-base font-bold text-ink-100 font-mono">{round1(totalMiles)}</p></div>
       </div>
     </div>
   );
@@ -112,7 +81,7 @@ function SummaryBar({ blocks, dayData }) {
 
 // ── Expense form ─────────────────────────────────────────────────────────────
 
-function ExpenseForm({ blockId, onAdd }) {
+function ExpenseForm({ blockId, entryDate, onAdd }) {
   const [cat, setCat] = useState('gas');
   const [amt, setAmt] = useState('');
   const [desc, setDesc] = useState('');
@@ -120,7 +89,7 @@ function ExpenseForm({ blockId, onAdd }) {
 
   async function handleAdd() {
     if (!amt || Number(amt) <= 0) return;
-    await onAdd(blockId, { category: cat, amount: Number(amt), description: desc || null });
+    await onAdd(blockId, { entry_date: entryDate, category: cat, amount: Number(amt), description: desc || null });
     setAmt(''); setDesc(''); setOpen(false);
   }
 
@@ -146,7 +115,7 @@ function ExpenseForm({ blockId, onAdd }) {
   );
 }
 
-// ── Platform earning row ─────────────────────────────────────────────────────
+// ── Platform earning row + form ──────────────────────────────────────────────
 
 function PlatformEarningRow({ pe, onDelete }) {
   return (
@@ -155,16 +124,12 @@ function PlatformEarningRow({ pe, onDelete }) {
       <span className="text-ink-200">{pe.platform_name}</span>
       <span className="font-mono text-ink-100">{formatCurrency(pe.earnings)}</span>
       {pe.trip_count != null && <span className="text-ink-500">{pe.trip_count} trips</span>}
-      <button onClick={() => onDelete(pe.id)} className="text-ink-500 hover:text-error ml-auto p-0.5 transition-colors">
-        <Trash2 size={10} />
-      </button>
+      <button onClick={() => onDelete(pe.id)} className="text-ink-500 hover:text-error ml-auto p-0.5 transition-colors"><Trash2 size={10} /></button>
     </div>
   );
 }
 
-// ── Platform earning form ────────────────────────────────────────────────────
-
-function PlatformEarningForm({ blockId, platforms, onAdd }) {
+function PlatformEarningForm({ blockId, entryDate, platforms, onAdd }) {
   const [pid, setPid] = useState('');
   const [earn, setEarn] = useState('');
   const [trips, setTrips] = useState('');
@@ -172,7 +137,7 @@ function PlatformEarningForm({ blockId, platforms, onAdd }) {
 
   async function handleAdd() {
     if (!pid || !earn) return;
-    await onAdd(blockId, { platform_id: pid, earnings: Number(earn), trip_count: trips ? Number(trips) : null });
+    await onAdd(blockId, { entry_date: entryDate, platform_id: pid, earnings: Number(earn), trip_count: trips ? Number(trips) : null });
     setEarn(''); setTrips(''); setOpen(false);
   }
 
@@ -201,37 +166,36 @@ function PlatformEarningForm({ blockId, platforms, onAdd }) {
 
 // ── Block card ───────────────────────────────────────────────────────────────
 
-function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense, onDeleteExpense, onAddPlatformEarning, onDeletePlatformEarning, platforms }) {
+function BlockCard({ block, entryDate, isCurrent, expanded, onToggle, onSave, onAddExpense, onDeleteExpense, onAddPlatformEarning, onDeletePlatformEarning, platforms }) {
+  const log = block.daily_log || {};
   const [form, setForm] = useState({});
   const [dirty, setDirty] = useState(false);
 
-  // Sync form when block data changes
   useEffect(() => {
     setForm({
-      actual_gross: block.actual_gross ?? '',
-      trip_count: block.trip_count ?? '',
-      actual_start: block.actual_start ?? '',
-      actual_end: block.actual_end ?? '',
-      odometer_start: block.odometer_start ?? '',
-      odometer_end: block.odometer_end ?? '',
-      log_notes: block.log_notes ?? '',
+      actual_gross: log.actual_gross ?? '',
+      trip_count: log.trip_count ?? '',
+      actual_start: log.actual_start ?? '',
+      actual_end: log.actual_end ?? '',
+      odometer_start: log.odometer_start ?? '',
+      odometer_end: log.odometer_end ?? '',
+      surge_active: log.surge_active ?? false,
+      log_notes: log.log_notes ?? '',
     });
     setDirty(false);
   }, [block]);
 
-  function update(field, value) {
-    setForm((f) => ({ ...f, [field]: value }));
-    setDirty(true);
-  }
+  function update(field, value) { setForm((f) => ({ ...f, [field]: value })); setDirty(true); }
 
   async function handleSave() {
-    const data = {};
+    const data = { entry_date: entryDate };
     if (form.actual_gross !== '') data.actual_gross = Number(form.actual_gross);
     if (form.trip_count !== '') data.trip_count = Number(form.trip_count);
     if (form.actual_start) data.actual_start = form.actual_start;
     if (form.actual_end) data.actual_end = form.actual_end;
     if (form.odometer_start !== '') data.odometer_start = Number(form.odometer_start);
     if (form.odometer_end !== '') data.odometer_end = Number(form.odometer_end);
+    data.surge_active = form.surge_active;
     if (form.log_notes) data.log_notes = form.log_notes;
     await onSave(block.id, data);
     setDirty(false);
@@ -242,28 +206,19 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
   const bgStyle = BLOCK_BG[block.block_type] || BLOCK_BG.note;
   const duration = block.hour_end - block.hour_start;
   const planned = Number(block.gross_revenue) || 0;
-  const blockExpenses = block.expenses || [];
-  const totalExp = blockExpenses.reduce((s, e) => s + Number(e.amount), 0);
-
+  const expenses = log.expenses || [];
+  const totalExp = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const miles = (form.odometer_start !== '' && form.odometer_end !== '')
     ? round1(Number(form.odometer_end) - Number(form.odometer_start))
-    : block.miles_driven != null ? round1(block.miles_driven) : null;
+    : log.miles_driven != null ? round1(log.miles_driven) : null;
 
   return (
     <div
-      className={`rounded-xl border transition-all ${typeStyle} ${bgStyle} ${
-        isCurrent ? 'ring-2 ring-arc/50 shadow-lg shadow-arc/10' : ''
-      }`}
-      style={block.platform_colors?.length > 0 ? {
-        borderLeftWidth: 4, borderLeftColor: block.platform_colors[0],
-      } : undefined}
+      className={`rounded-xl border transition-all ${typeStyle} ${bgStyle} ${isCurrent ? 'ring-2 ring-arc/50 shadow-lg shadow-arc/10' : ''}`}
+      style={block.platform_colors?.length > 0 ? { borderLeftWidth: 4, borderLeftColor: block.platform_colors[0] } : undefined}
     >
-      {/* Collapsed header — always visible */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left"
-      >
+      {/* Collapsed header */}
+      <button type="button" onClick={onToggle} className="w-full flex items-center gap-2 px-4 py-3 text-left">
         <Icon size={14} className="shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -279,8 +234,8 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
             <span>{round1(duration)}h</span>
             {block.zone_name && <span>· {block.zone_name}</span>}
             {planned > 0 && <span>· Plan {formatCurrency(planned)}</span>}
-            {block.actual_gross != null && <span className="text-success">· Actual {formatCurrency(block.actual_gross)}</span>}
-            {block.trip_count != null && <span>· {block.trip_count} trips</span>}
+            {log.actual_gross != null && <span className="text-success">· Actual {formatCurrency(log.actual_gross)}</span>}
+            {log.trip_count != null && <span>· {log.trip_count} trips</span>}
             {totalExp > 0 && <span className="text-error">· -{formatCurrency(totalExp)}</span>}
           </div>
         </div>
@@ -290,7 +245,6 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
       {/* Expanded body */}
       {expanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-current/10">
-
           {/* Platform placards */}
           {block.platform_names?.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-3">
@@ -337,11 +291,15 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
             </div>
           </div>
 
-          {miles != null && (
-            <p className="text-[10px] text-ink-500 flex items-center gap-1">
-              <Car size={10} /> {miles} miles
-            </p>
-          )}
+          {miles != null && <p className="text-[10px] text-ink-500 flex items-center gap-1"><Car size={10} /> {miles} miles</p>}
+
+          {/* Surge toggle */}
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => update('surge_active', !form.surge_active)}
+              className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${form.surge_active ? 'bg-ember/15 text-ember' : 'bg-obsidian-700 text-ink-400'}`}>
+              {form.surge_active ? 'Surge Active' : 'No Surge'}
+            </button>
+          </div>
 
           {/* Notes */}
           <div>
@@ -361,10 +319,10 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
           <div>
             <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-1.5">Platform Breakdown</p>
             <div className="space-y-1.5">
-              {(block.platform_earnings || []).map((pe) => (
+              {(log.platform_earnings || []).map((pe) => (
                 <PlatformEarningRow key={pe.id} pe={pe} onDelete={onDeletePlatformEarning} />
               ))}
-              <PlatformEarningForm blockId={block.id} platforms={platforms} onAdd={onAddPlatformEarning} />
+              <PlatformEarningForm blockId={block.id} entryDate={entryDate} platforms={platforms} onAdd={onAddPlatformEarning} />
             </div>
           </div>
 
@@ -372,17 +330,15 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
           <div>
             <p className="text-[10px] text-ink-500 uppercase tracking-wide mb-1.5">Expenses</p>
             <div className="space-y-1">
-              {blockExpenses.map((e) => (
+              {expenses.map((e) => (
                 <div key={e.id} className="flex items-center gap-2 text-xs">
                   <span className="text-ink-400 capitalize w-14">{e.category.replace('_', ' ')}</span>
                   <span className="font-mono text-error">{formatCurrency(e.amount)}</span>
                   {e.description && <span className="text-ink-500 truncate flex-1">{e.description}</span>}
-                  <button onClick={() => onDeleteExpense(e.id)} className="text-ink-500 hover:text-error p-0.5 transition-colors">
-                    <Trash2 size={10} />
-                  </button>
+                  <button onClick={() => onDeleteExpense(e.id)} className="text-ink-500 hover:text-error p-0.5 transition-colors"><Trash2 size={10} /></button>
                 </div>
               ))}
-              <ExpenseForm blockId={block.id} onAdd={onAddExpense} />
+              <ExpenseForm blockId={block.id} entryDate={entryDate} onAdd={onAddExpense} />
             </div>
           </div>
         </div>
@@ -394,13 +350,15 @@ function BlockCard({ block, isCurrent, expanded, onToggle, onSave, onAddExpense,
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [dayData,    setDayData]    = useState(null);
-  const [blocks,     setBlocks]     = useState([]);
-  const [platforms,  setPlatforms]  = useState([]);
-  const [expanded,   setExpanded]   = useState(null);
+  const [dayData, setDayData] = useState(null);
+  const [blocks, setBlocks] = useState([]);
+  const [platforms, setPlatforms] = useState([]);
+  const [expanded, setExpanded] = useState(null);
   const [noSchedule, setNoSchedule] = useState(false);
-  const [error,      setError]      = useState('');
-  const [now,        setNow]        = useState(currentHour());
+  const [error, setError] = useState('');
+  const [now, setNow] = useState(currentHour());
+
+  const entryDate = todayStr();
 
   useEffect(() => {
     const id = setInterval(() => setNow(currentHour()), 60000);
@@ -408,25 +366,21 @@ export default function DashboardPage() {
   }, []);
 
   const loadDay = useCallback(async () => {
-    try {
-      const [dayRes, platRes] = await Promise.all([
-        api.get(`/metrics/shift-log/today`),
-        api.get('/metrics/platforms?include_inactive=false'),
-      ]);
-      if (!dayRes.ok) { setNoSchedule(true); return; }
-      const data = await dayRes.json();
-      setDayData(data);
-      setBlocks(data.blocks || []);
-      setNoSchedule(false);
-      if (platRes.ok) setPlatforms(await platRes.json());
-    } catch {
-      setError('Failed to load shift data.');
-    }
+    const [dayRes, platRes] = await Promise.all([
+      api.get('/metrics/shift-log/today'),
+      api.get('/metrics/platforms?include_inactive=false'),
+    ]);
+    if (!dayRes.ok) { setNoSchedule(true); return; }
+    const data = await dayRes.json();
+    setDayData(data);
+    setBlocks(data.blocks || []);
+    setNoSchedule(false);
+    if (platRes.ok) setPlatforms(await platRes.json());
   }, []);
 
   useEffect(() => { loadDay(); }, [loadDay]);
 
-  // Auto-expand current block on load
+  // Auto-expand current block on first load
   useEffect(() => {
     if (expanded === null && blocks.length > 0) {
       const cur = blocks.find((b) => b.hour_start <= now && b.hour_end > now);
@@ -438,40 +392,32 @@ export default function DashboardPage() {
     await api.put(`/metrics/shift-log/blocks/${blockId}`, data);
     await loadDay();
   }
-
   async function handleAddExpense(blockId, data) {
     await api.post(`/metrics/shift-log/blocks/${blockId}/expenses`, data);
     await loadDay();
   }
-
   async function handleDeleteExpense(expenseId) {
     await api.delete(`/metrics/shift-log/expenses/${expenseId}`);
     await loadDay();
   }
-
   async function handleAddPlatformEarning(blockId, data) {
     await api.post(`/metrics/shift-log/blocks/${blockId}/platform-earnings`, data);
     await loadDay();
   }
-
   async function handleDeletePlatformEarning(earningId) {
     await api.delete(`/metrics/shift-log/platform-earnings/${earningId}`);
     await loadDay();
   }
 
-  if (error) {
-    return <div className="flex items-center gap-2 text-error text-sm p-8"><AlertCircle size={16} /> {error}</div>;
-  }
+  if (error) return <div className="flex items-center gap-2 text-error text-sm p-8"><AlertCircle size={16} /> {error}</div>;
 
   return (
     <div className="max-w-2xl space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Shift Log</h1>
-          <p className="text-xs text-ink-400 mt-0.5">
-            {format(new Date(), 'EEEE, MMMM d')} · {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-          </p>
-        </div>
+      <div>
+        <h1 className="page-title">Shift Log</h1>
+        <p className="text-xs text-ink-400 mt-0.5">
+          {format(new Date(), 'EEEE, MMMM d')} · {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+        </p>
       </div>
 
       {noSchedule && (
@@ -484,28 +430,24 @@ export default function DashboardPage() {
       {dayData && (
         <>
           <SummaryBar blocks={blocks} dayData={dayData} />
-
           <div className="space-y-2">
-            {blocks.map((b) => {
-              const isCurrent = b.hour_start <= now && b.hour_end > now;
-              return (
-                <BlockCard
-                  key={b.id}
-                  block={b}
-                  isCurrent={isCurrent}
-                  expanded={expanded === b.id}
-                  onToggle={() => setExpanded(expanded === b.id ? null : b.id)}
-                  onSave={handleSaveBlock}
-                  onAddExpense={handleAddExpense}
-                  onDeleteExpense={handleDeleteExpense}
-                  onAddPlatformEarning={handleAddPlatformEarning}
-                  onDeletePlatformEarning={handleDeletePlatformEarning}
-                  platforms={platforms}
-                />
-              );
-            })}
+            {blocks.map((b) => (
+              <BlockCard
+                key={b.id}
+                block={b}
+                entryDate={entryDate}
+                isCurrent={b.hour_start <= now && b.hour_end > now}
+                expanded={expanded === b.id}
+                onToggle={() => setExpanded(expanded === b.id ? null : b.id)}
+                onSave={handleSaveBlock}
+                onAddExpense={handleAddExpense}
+                onDeleteExpense={handleDeleteExpense}
+                onAddPlatformEarning={handleAddPlatformEarning}
+                onDeletePlatformEarning={handleDeletePlatformEarning}
+                platforms={platforms}
+              />
+            ))}
           </div>
-
           {blocks.length === 0 && (
             <div className="metal-card px-6 py-8 text-center">
               <p className="text-ink-400 text-sm">Schedule has no blocks. Add some in the Schedule page.</p>

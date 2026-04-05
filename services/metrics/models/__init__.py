@@ -14,6 +14,7 @@ from .maintenance_record import MaintenanceRecord
 from .platform import Platform
 from .schedule import Schedule
 from .schedule_block import ScheduleBlock
+from .system_config import SystemConfig
 from .weekly_rollup import WeeklyRollup
 from .zone import Zone
 from .zone_schedule import ZoneSchedule
@@ -35,6 +36,7 @@ __all__ = [
     "Platform",
     "Schedule",
     "ScheduleBlock",
+    "SystemConfig",
     "WeeklyRollup",
     "Zone",
     "ZoneSchedule",
