@@ -68,7 +68,7 @@ function BudgetOverview({ summary, onUpdateBudget }) {
             {over && <p className="text-[9px] text-error mt-0.5">{formatCurrency(r.spent - r.monthly_amount)} over</p>}
             {r.tax_deductible && r.spent > 0 && (
               <p className="text-[9px] text-success mt-0.5" title={r.tax_notes || ''}>
-                ~{formatCurrency(r.spent * 0.22)} tax savings
+                ~{formatCurrency(r.spent * 0.22)} est. tax deduction
               </p>
             )}
             {!r.tax_deductible && r.spent > 0 && (

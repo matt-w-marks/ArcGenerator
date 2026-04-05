@@ -123,7 +123,7 @@ export default function BudgetsPage() {
             <div className="metal-card px-3 py-2.5">
               <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide">Tax Deductible Spend</p>
               <p className="text-base font-normal font-mono text-success">{formatCurrency(totalDeductibleSpent)}</p>
-              <p className="text-[9px] text-ink-500">~{formatCurrency(totalDeductibleSpent * 0.22)} est. savings</p>
+              <p className="text-[9px] text-ink-500">~{formatCurrency(totalDeductibleSpent * 0.22)} est. IRS write-off</p>
             </div>
           </div>
 
