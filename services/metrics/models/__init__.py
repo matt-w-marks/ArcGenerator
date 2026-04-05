@@ -1,3 +1,4 @@
+from .audit_log import AuditLog
 from .base import Base
 from .calendar_entry import CalendarEntry
 from .checklist import Checklist
@@ -20,6 +21,7 @@ from .zone import Zone
 from .zone_schedule import ZoneSchedule
 
 __all__ = [
+    "AuditLog",
     "Base",
     "CalendarEntry",
     "Checklist",

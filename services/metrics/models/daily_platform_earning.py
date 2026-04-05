@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, Numeric, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +30,8 @@ class DailyPlatformEarning(Base):
     )
     earnings: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, default=0)
     trip_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     daily_block_log: Mapped["DailyBlockLog"] = relationship(  # type: ignore[name-defined]
         "DailyBlockLog", back_populates="platform_earnings"

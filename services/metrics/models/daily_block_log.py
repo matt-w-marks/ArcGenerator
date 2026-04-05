@@ -40,6 +40,8 @@ class DailyBlockLog(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     block: Mapped["ScheduleBlock"] = relationship("ScheduleBlock", lazy="select")  # type: ignore[name-defined]
     expenses: Mapped[list["DailyExpense"]] = relationship(  # type: ignore[name-defined]

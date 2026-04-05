@@ -11,12 +11,18 @@ from pydantic import BaseModel
 from sqlalchemy import func as sqf, case
 from sqlalchemy.orm import Session
 
+from audit import audit, diff, get_user_id
 from database import get_db
 from models import (
     CalendarEntry, DailyBlockLog, DailyExpense, DailyPlatformEarning,
     JobActivity, MaintenanceRecord, Platform, Schedule, ScheduleBlock,
     SystemConfig, Zone,
 )
+
+# Shorthand for active-only filters
+_log_active = lambda q: q.filter(DailyBlockLog.deleted_at.is_(None))
+_exp_active = lambda q: q.filter(DailyExpense.deleted_at.is_(None))
+_pe_active = lambda q: q.filter(DailyPlatformEarning.deleted_at.is_(None))
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -146,13 +152,13 @@ def _safe_div(num: float, den: float) -> float:
 def _summary(db: Session, from_date: date, to_date: date) -> SummaryResponse:
     logs = (
         db.query(DailyBlockLog)
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date)
+        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .all()
     )
     log_ids = [l.id for l in logs]
     expenses = (
         db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-        .filter(DailyExpense.daily_block_log_id.in_(log_ids))
+        .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None))
         .scalar()
     ) if log_ids else 0
 
@@ -209,7 +215,7 @@ def _by_day(db: Session, from_date: date, to_date: date) -> list[DayRow]:
         sched = sched_map.get(entry.schedule_id)
         logs = (
             db.query(DailyBlockLog)
-            .filter(DailyBlockLog.entry_date == entry.entry_date)
+            .filter(DailyBlockLog.entry_date == entry.entry_date, DailyBlockLog.deleted_at.is_(None))
             .join(ScheduleBlock, ScheduleBlock.id == DailyBlockLog.block_id)
             .filter(ScheduleBlock.schedule_id == entry.schedule_id)
             .all()
@@ -220,12 +226,12 @@ def _by_day(db: Session, from_date: date, to_date: date) -> list[DayRow]:
         log_ids = [l.id for l in logs]
         exp_total = float(
             db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-            .filter(DailyExpense.daily_block_log_id.in_(log_ids))
+            .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None))
             .scalar()
         )
         gas_total = float(
             db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-            .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.category == "gas")
+            .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None), DailyExpense.category == "gas")
             .scalar()
         )
 
@@ -267,7 +273,7 @@ def _by_zone(db: Session, from_date: date, to_date: date) -> list[ZoneRow]:
             sqf.coalesce(sqf.sum(ScheduleBlock.gross_revenue), 0).label("planned_gross"),
         )
         .join(DailyBlockLog, DailyBlockLog.block_id == ScheduleBlock.id)
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date)
+        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .filter(ScheduleBlock.zone_id.isnot(None))
         .group_by(ScheduleBlock.zone_id)
         .all()
@@ -310,7 +316,7 @@ def _by_platform(db: Session, from_date: date, to_date: date) -> list[PlatformRo
             sqf.coalesce(sqf.sum(DailyPlatformEarning.trip_count), 0).label("total_trips"),
         )
         .join(DailyBlockLog, DailyBlockLog.id == DailyPlatformEarning.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date)
+        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .group_by(DailyPlatformEarning.platform_id)
         .all()
     )
@@ -348,7 +354,7 @@ def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
             sqf.count(DailyExpense.id).label("count"),
         )
         .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date)
+        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .group_by(DailyExpense.category)
         .all()
     )
@@ -356,7 +362,7 @@ def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
     total = sum(float(r.total) for r in results)
     gross = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.actual_gross), 0))
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date)
+        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     gas = sum(float(r.total) for r in results if r.category == "gas")
@@ -383,7 +389,7 @@ def _weekly(db: Session) -> WeeklyResponse:
 
     logs = (
         db.query(DailyBlockLog)
-        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun)
+        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun, DailyBlockLog.deleted_at.is_(None))
         .all()
     )
     log_ids = [l.id for l in logs]
@@ -425,17 +431,17 @@ def _financial_health(db: Session) -> FinancialHealthResponse:
     # YTD totals from daily_block_logs
     ytd_gross = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.actual_gross), 0))
-        .filter(DailyBlockLog.entry_date >= year_start)
+        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     ytd_miles = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.miles_driven), 0))
-        .filter(DailyBlockLog.entry_date >= year_start)
+        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     ytd_hours = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.active_hours), 0))
-        .filter(DailyBlockLog.entry_date >= year_start)
+        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
 
@@ -457,13 +463,13 @@ def _financial_health(db: Session) -> FinancialHealthResponse:
     weekly_gas = float(
         db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
         .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun)
+        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun, DailyBlockLog.deleted_at.is_(None))
         .filter(DailyExpense.category == "gas")
         .scalar()
     )
     weekly_hours = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.active_hours), 0))
-        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun)
+        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     # Breakeven $/hr = total weekly costs / hours worked. Use actual data if available.
@@ -529,18 +535,18 @@ def _tax_summary(db: Session, year: int | None = None) -> TaxSummaryResponse:
 
     ytd_gross = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.actual_gross), 0))
-        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end)
+        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     ytd_miles = float(
         db.query(sqf.coalesce(sqf.sum(DailyBlockLog.miles_driven), 0))
-        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end)
+        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     ytd_expenses = float(
         db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
         .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end)
+        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
     maint_total = float(
@@ -640,10 +646,23 @@ def get_config(db: Session = Depends(get_db)):
     )
 
 @router.put("/config", response_model=ConfigResponse)
-def update_config(body: ConfigUpdate, db: Session = Depends(get_db)):
+def update_config(body: ConfigUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     c = db.query(SystemConfig).first()
+    old_state = {
+        "phase": c.phase, "weekly_vehicle_cost": float(c.weekly_vehicle_cost),
+        "monthly_nut": float(c.monthly_nut), "bankroll_remaining": float(c.bankroll_remaining),
+        "se_tax_rate": float(c.se_tax_rate), "irs_mileage_rate": float(c.irs_mileage_rate),
+    }
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(c, field, value)
+    new_state = {
+        "phase": c.phase, "weekly_vehicle_cost": float(c.weekly_vehicle_cost),
+        "monthly_nut": float(c.monthly_nut), "bankroll_remaining": float(c.bankroll_remaining),
+        "se_tax_rate": float(c.se_tax_rate), "irs_mileage_rate": float(c.irs_mileage_rate),
+    }
+    changes = diff(old_state, new_state)
+    if changes:
+        audit(db, "system_config", c.id, "UPDATE", user_id, changes)
     db.commit()
     db.refresh(c)
     return ConfigResponse(

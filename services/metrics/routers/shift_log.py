@@ -2,23 +2,18 @@
 
 All actual/logged data lives in daily_block_logs, keyed by (block_id, entry_date).
 schedule_blocks remain pure templates (planned data only).
-
-GET  /shift-log/today                          → today's schedule + blocks with daily log data
-GET  /shift-log/{date}                         → specific date
-PUT  /shift-log/blocks/{block_id}              → upsert daily log for a block on a date
-POST /shift-log/blocks/{block_id}/expenses     → add expense (auto-creates daily log if needed)
-DELETE /shift-log/expenses/{id}                → delete expense
-POST /shift-log/blocks/{block_id}/platform-earnings  → upsert platform earning
-DELETE /shift-log/platform-earnings/{id}       → delete platform earning
+Soft delete: deleted_at populated instead of row removal.
+All mutations audit-logged.
 """
 
-from datetime import date, time
+from datetime import date, datetime, time, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session, joinedload
 
+from audit import audit, diff, snapshot, get_user_id
 from database import get_db
 from models import (
     CalendarEntry, Schedule, ScheduleBlock, Platform,
@@ -64,12 +59,15 @@ class BlockLogUpdate(BaseModel):
     entry_date: date
     actual_gross: float | None = Field(default=None, ge=0)
     trip_count: int | None = Field(default=None, ge=0)
-    actual_start: str | None = None   # "HH:MM" or "HH:MM:SS"
+    actual_start: str | None = None
     actual_end: str | None = None
     odometer_start: float | None = Field(default=None, ge=0)
     odometer_end: float | None = Field(default=None, ge=0)
     surge_active: bool | None = None
     log_notes: str | None = None
+
+class BlockLogDeleteRequest(BaseModel):
+    entry_date: date
 
 class DailyLogResponse(BaseModel):
     id: UUID
@@ -89,7 +87,6 @@ class DailyLogResponse(BaseModel):
     platform_earnings: list[PlatformEarningResponse] = []
 
 class BlockLogResponse(BaseModel):
-    """Combined template block + daily log data for a specific date."""
     id: UUID
     schedule_id: UUID
     hour_start: float
@@ -104,7 +101,6 @@ class BlockLogResponse(BaseModel):
     platform_ids: list[UUID] = []
     platform_names: list[str] = []
     platform_colors: list[str] = []
-    # Daily log (None if not yet logged)
     daily_log: DailyLogResponse | None = None
 
 class DayLogResponse(BaseModel):
@@ -129,22 +125,44 @@ def _parse_time(s: str | None) -> time | None:
     parts = s.split(":")
     return time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
 
-def _get_or_create_daily_log(db: Session, block_id: UUID, entry_date: date) -> DailyBlockLog:
-    """Find or create a DailyBlockLog for the given block+date."""
+def _log_snapshot(log: DailyBlockLog) -> dict:
+    """Capture current state of a log for audit diffing."""
+    return {
+        "actual_gross": float(log.actual_gross) if log.actual_gross is not None else None,
+        "trip_count": log.trip_count,
+        "actual_start": _time_str(log.actual_start),
+        "actual_end": _time_str(log.actual_end),
+        "odometer_start": float(log.odometer_start) if log.odometer_start is not None else None,
+        "odometer_end": float(log.odometer_end) if log.odometer_end is not None else None,
+        "miles_driven": float(log.miles_driven) if log.miles_driven is not None else None,
+        "surge_active": log.surge_active,
+        "active_hours": float(log.active_hours) if log.active_hours is not None else None,
+        "log_notes": log.log_notes,
+    }
+
+def _get_or_create_daily_log(db: Session, block_id: UUID, entry_date: date) -> tuple[DailyBlockLog, bool]:
+    """Find or create a DailyBlockLog. Returns (log, is_new)."""
     log = (
         db.query(DailyBlockLog)
-        .filter(DailyBlockLog.block_id == block_id, DailyBlockLog.entry_date == entry_date)
+        .filter(
+            DailyBlockLog.block_id == block_id,
+            DailyBlockLog.entry_date == entry_date,
+            DailyBlockLog.deleted_at.is_(None),
+        )
         .first()
     )
     if log is None:
         log = DailyBlockLog(block_id=block_id, entry_date=entry_date)
         db.add(log)
         db.flush()
-    return log
+        return log, True
+    return log, False
 
 def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogResponse:
     pe_list = []
     for pe in (log.platform_earnings or []):
+        if pe.deleted_at is not None:
+            continue
         p = pmap.get(pe.platform_id)
         pe_list.append(PlatformEarningResponse(
             id=pe.id,
@@ -155,6 +173,8 @@ def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogRespons
             earnings=float(pe.earnings),
             trip_count=pe.trip_count,
         ))
+
+    active_expenses = [e for e in (log.expenses or []) if e.deleted_at is None]
 
     return DailyLogResponse(
         id=log.id,
@@ -170,7 +190,7 @@ def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogRespons
         surge_active=log.surge_active,
         active_hours=float(log.active_hours) if log.active_hours is not None else None,
         log_notes=log.log_notes,
-        expenses=[ExpenseResponse.model_validate(e) for e in (log.expenses or [])],
+        expenses=[ExpenseResponse.model_validate(e) for e in active_expenses],
         platform_earnings=pe_list,
     )
 
@@ -215,7 +235,6 @@ def _load_day(db: Session, entry_date: date) -> DayLogResponse:
         .all()
     )
 
-    # Load daily logs for this date
     block_ids = [b.id for b in blocks]
     daily_logs = (
         db.query(DailyBlockLog)
@@ -223,18 +242,22 @@ def _load_day(db: Session, entry_date: date) -> DayLogResponse:
             joinedload(DailyBlockLog.expenses),
             joinedload(DailyBlockLog.platform_earnings),
         )
-        .filter(DailyBlockLog.block_id.in_(block_ids), DailyBlockLog.entry_date == entry_date)
+        .filter(
+            DailyBlockLog.block_id.in_(block_ids),
+            DailyBlockLog.entry_date == entry_date,
+            DailyBlockLog.deleted_at.is_(None),
+        )
         .all()
     ) if block_ids else []
     log_map = {dl.block_id: dl for dl in daily_logs}
 
-    # Build platform map
     all_pids = set()
     for b in blocks:
         all_pids.update(b.platform_ids or [])
     for dl in daily_logs:
         for pe in (dl.platform_earnings or []):
-            all_pids.add(pe.platform_id)
+            if pe.deleted_at is None:
+                all_pids.add(pe.platform_id)
     pmap = {}
     if all_pids:
         pmap = {p.id: p for p in db.query(Platform).filter(Platform.id.in_(all_pids)).all()}
@@ -248,6 +271,21 @@ def _load_day(db: Session, entry_date: date) -> DayLogResponse:
         blocks=[_build_block_response(b, pmap, log_map.get(b.id)) for b in blocks],
     )
 
+def _reload_log(db: Session, log_id: UUID) -> tuple[DailyBlockLog, dict]:
+    """Reload a log with relationships and build platform map."""
+    log = (
+        db.query(DailyBlockLog)
+        .options(joinedload(DailyBlockLog.expenses), joinedload(DailyBlockLog.platform_earnings))
+        .filter(DailyBlockLog.id == log_id)
+        .first()
+    )
+    all_pids = set()
+    for pe in (log.platform_earnings or []):
+        if pe.deleted_at is None:
+            all_pids.add(pe.platform_id)
+    pmap = {p.id: p for p in db.query(Platform).filter(Platform.id.in_(all_pids)).all()} if all_pids else {}
+    return log, pmap
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -260,12 +298,13 @@ def get_day(entry_date: date, db: Session = Depends(get_db)):
     return _load_day(db, entry_date)
 
 @router.put("/blocks/{block_id}", response_model=DailyLogResponse)
-def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends(get_db)):
+def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
         raise HTTPException(status_code=404, detail="Block not found")
 
-    log = _get_or_create_daily_log(db, block_id, body.entry_date)
+    log, is_new = _get_or_create_daily_log(db, block_id, body.entry_date)
+    old_state = _log_snapshot(log) if not is_new else {}
 
     data = body.model_dump(exclude={"entry_date"}, exclude_none=True)
     if "actual_start" in data:
@@ -276,44 +315,59 @@ def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends
     for field, value in data.items():
         setattr(log, field, value)
 
-    # Auto-calc miles
     if log.odometer_start is not None and log.odometer_end is not None:
         log.miles_driven = float(log.odometer_end) - float(log.odometer_start)
 
-    # Auto-calc active hours
     if log.actual_start is not None and log.actual_end is not None:
         start_mins = log.actual_start.hour * 60 + log.actual_start.minute
         end_mins = log.actual_end.hour * 60 + log.actual_end.minute
         if end_mins < start_mins:
-            end_mins += 24 * 60  # overnight
+            end_mins += 24 * 60
         log.active_hours = round((end_mins - start_mins) / 60, 2)
+
+    db.flush()
+
+    if is_new:
+        audit(db, "daily_block_logs", log.id, "CREATE", user_id, snapshot(_log_snapshot(log)))
+    else:
+        changes = diff(old_state, _log_snapshot(log))
+        if changes:
+            audit(db, "daily_block_logs", log.id, "UPDATE", user_id, changes)
 
     db.commit()
 
-    # Reload with relationships
+    log, pmap = _reload_log(db, log.id)
+    return _build_daily_log_response(log, pmap)
+
+
+@router.delete("/blocks/{block_id}", status_code=204)
+def soft_delete_block_log(block_id: UUID, body: BlockLogDeleteRequest, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    """Soft delete a daily block log for a specific date."""
     log = (
         db.query(DailyBlockLog)
-        .options(
-            joinedload(DailyBlockLog.expenses),
-            joinedload(DailyBlockLog.platform_earnings),
+        .filter(
+            DailyBlockLog.block_id == block_id,
+            DailyBlockLog.entry_date == body.entry_date,
+            DailyBlockLog.deleted_at.is_(None),
         )
-        .filter(DailyBlockLog.id == log.id)
         .first()
     )
-    all_pids = set()
-    for pe in (log.platform_earnings or []):
-        all_pids.add(pe.platform_id)
-    pmap = {p.id: p for p in db.query(Platform).filter(Platform.id.in_(all_pids)).all()} if all_pids else {}
-    return _build_daily_log_response(log, pmap)
+    if log is None:
+        raise HTTPException(status_code=404, detail="No active log found for that block+date")
+    now = datetime.now(timezone.utc)
+    log.deleted_at = now
+    log.deleted_by = user_id
+    audit(db, "daily_block_logs", log.id, "DELETE", user_id, snapshot(_log_snapshot(log)))
+    db.commit()
 
 
 # ── Expenses ──────────────────────────────────────────────────────────────────
 
 @router.post("/blocks/{block_id}/expenses", response_model=ExpenseResponse, status_code=201)
-def add_expense(block_id: UUID, body: ExpenseCreate, db: Session = Depends(get_db)):
+def add_expense(block_id: UUID, body: ExpenseCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     if not db.get(ScheduleBlock, block_id):
         raise HTTPException(status_code=404, detail="Block not found")
-    log = _get_or_create_daily_log(db, block_id, body.entry_date)
+    log, _ = _get_or_create_daily_log(db, block_id, body.entry_date)
     expense = DailyExpense(
         daily_block_log_id=log.id,
         category=body.category,
@@ -321,23 +375,32 @@ def add_expense(block_id: UUID, body: ExpenseCreate, db: Session = Depends(get_d
         description=body.description,
     )
     db.add(expense)
+    db.flush()
+    audit(db, "daily_expenses", expense.id, "CREATE", user_id, {
+        "category": body.category, "amount": float(body.amount), "description": body.description,
+    })
     db.commit()
     db.refresh(expense)
     return expense
 
 @router.delete("/expenses/{expense_id}", status_code=204)
-def delete_expense(expense_id: UUID, db: Session = Depends(get_db)):
+def delete_expense(expense_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     exp = db.get(DailyExpense, expense_id)
-    if exp is None:
+    if exp is None or exp.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Expense not found")
-    db.delete(exp)
+    now = datetime.now(timezone.utc)
+    exp.deleted_at = now
+    exp.deleted_by = user_id
+    audit(db, "daily_expenses", exp.id, "DELETE", user_id, {
+        "category": exp.category, "amount": float(exp.amount), "description": exp.description,
+    })
     db.commit()
 
 
 # ── Platform earnings ─────────────────────────────────────────────────────────
 
 @router.post("/blocks/{block_id}/platform-earnings", response_model=PlatformEarningResponse, status_code=201)
-def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Session = Depends(get_db)):
+def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
         raise HTTPException(status_code=404, detail="Block not found")
@@ -345,21 +408,25 @@ def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Ses
     if plat is None:
         raise HTTPException(status_code=404, detail="Platform not found")
 
-    log = _get_or_create_daily_log(db, block_id, body.entry_date)
+    log, _ = _get_or_create_daily_log(db, block_id, body.entry_date)
 
-    # Upsert
     existing = (
         db.query(DailyPlatformEarning)
         .filter(
             DailyPlatformEarning.daily_block_log_id == log.id,
             DailyPlatformEarning.platform_id == body.platform_id,
+            DailyPlatformEarning.deleted_at.is_(None),
         )
         .first()
     )
     if existing:
+        old = {"earnings": float(existing.earnings), "trip_count": existing.trip_count}
         existing.earnings = body.earnings
         existing.trip_count = body.trip_count
         pe = existing
+        changes = diff(old, {"earnings": float(body.earnings), "trip_count": body.trip_count})
+        if changes:
+            audit(db, "daily_platform_earnings", pe.id, "UPDATE", user_id, changes)
     else:
         pe = DailyPlatformEarning(
             daily_block_log_id=log.id,
@@ -368,6 +435,10 @@ def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Ses
             trip_count=body.trip_count,
         )
         db.add(pe)
+        db.flush()
+        audit(db, "daily_platform_earnings", pe.id, "CREATE", user_id, {
+            "platform_id": str(body.platform_id), "earnings": float(body.earnings), "trip_count": body.trip_count,
+        })
     db.commit()
     db.refresh(pe)
 
@@ -382,9 +453,14 @@ def upsert_platform_earning(block_id: UUID, body: PlatformEarningCreate, db: Ses
     )
 
 @router.delete("/platform-earnings/{earning_id}", status_code=204)
-def delete_platform_earning(earning_id: UUID, db: Session = Depends(get_db)):
+def delete_platform_earning(earning_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     pe = db.get(DailyPlatformEarning, earning_id)
-    if pe is None:
+    if pe is None or pe.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Platform earning not found")
-    db.delete(pe)
+    now = datetime.now(timezone.utc)
+    pe.deleted_at = now
+    pe.deleted_by = user_id
+    audit(db, "daily_platform_earnings", pe.id, "DELETE", user_id, {
+        "platform_id": str(pe.platform_id), "earnings": float(pe.earnings), "trip_count": pe.trip_count,
+    })
     db.commit()
