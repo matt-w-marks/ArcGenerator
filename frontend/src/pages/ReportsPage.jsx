@@ -578,27 +578,18 @@ export default function ReportsPage() {
 
   const load = useCallback(async () => {
     const { from, to } = getRange();
-    const q = `from=${from}&to=${to}`;
-    const [sR, dR, zR, pR, eR, wR, fR, jR, tR] = await Promise.all([
-      api.get(`/metrics/reports/summary?${q}`),
-      api.get(`/metrics/reports/by-day?${q}`),
-      api.get(`/metrics/reports/by-zone?${q}`),
-      api.get(`/metrics/reports/by-platform?${q}`),
-      api.get(`/metrics/reports/expenses?${q}`),
-      api.get('/metrics/reports/weekly'),
-      api.get('/metrics/reports/financial-health'),
-      api.get('/metrics/reports/job-search'),
-      api.get('/metrics/reports/tax-summary'),
-    ]);
-    if (sR.ok) setSummary(await sR.json());
-    if (dR.ok) setByDay(await dR.json());
-    if (zR.ok) setByZone(await zR.json());
-    if (pR.ok) setByPlatform(await pR.json());
-    if (eR.ok) setExpenses(await eR.json());
-    if (wR.ok) setWeekly(await wR.json());
-    if (fR.ok) setFinancial(await fR.json());
-    if (jR.ok) setJobSearch(await jR.json());
-    if (tR.ok) setTaxSummary(await tR.json());
+    const r = await api.get(`/metrics/reports/dashboard?from=${from}&to=${to}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    setSummary(d.summary);
+    setByDay(d.by_day);
+    setByZone(d.by_zone);
+    setByPlatform(d.by_platform);
+    setExpenses(d.expenses);
+    setWeekly(d.weekly);
+    setFinancial(d.financial_health);
+    setJobSearch(d.job_search);
+    setTaxSummary(d.tax_summary);
   }, [getRange]);
 
   useEffect(() => { load(); }, [load]);

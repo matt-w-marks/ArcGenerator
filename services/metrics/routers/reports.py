@@ -560,6 +560,39 @@ def report_tax_summary(db: Session = Depends(get_db), year: int = Query(default=
     )
 
 
+# ── Batched dashboard — single call for the Reports page ──────────────────────
+
+class DashboardBatchResponse(BaseModel):
+    summary: SummaryResponse
+    by_day: list[DayRow]
+    by_zone: list[ZoneRow]
+    by_platform: list[PlatformRow]
+    expenses: ExpensesResponse
+    weekly: WeeklyResponse
+    financial_health: FinancialHealthResponse
+    job_search: JobSearchResponse
+    tax_summary: TaxSummaryResponse
+
+@router.get("/dashboard", response_model=DashboardBatchResponse)
+def report_dashboard(
+    db: Session = Depends(get_db),
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+):
+    """Single endpoint returning all report data. Reduces 9 API calls to 1."""
+    return DashboardBatchResponse(
+        summary=report_summary(db=db, from_date=from_date, to_date=to_date),
+        by_day=report_by_day(db=db, from_date=from_date, to_date=to_date),
+        by_zone=report_by_zone(db=db, from_date=from_date, to_date=to_date),
+        by_platform=report_by_platform(db=db, from_date=from_date, to_date=to_date),
+        expenses=report_expenses(db=db, from_date=from_date, to_date=to_date),
+        weekly=report_weekly(db=db),
+        financial_health=report_financial_health(db=db),
+        job_search=report_job_search(db=db),
+        tax_summary=report_tax_summary(db=db),
+    )
+
+
 # ── Config endpoint ───────────────────────────────────────────────────────────
 
 class ConfigResponse(BaseModel):

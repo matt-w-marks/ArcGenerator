@@ -21,19 +21,24 @@ app.use((_req, res, next) => {
   next();
 });
 
-// ── Global rate limit: 2000 req / 15 min per IP ──────────────────────────────
-const globalLimiter = rateLimit({
+// ── Rate limiting ────────────────────────────────────────────────────────────
+// Unauthenticated: 200 req / 15 min (login brute force protection)
+const publicLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 2000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
 });
 
-// Skip rate limiting during test runs (jest sets JEST_WORKER_ID automatically)
-if (!process.env.JEST_WORKER_ID) {
-  app.use(globalLimiter);
-}
+// Authenticated: 1000 req / 15 min per IP (normal app usage)
+const authedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded. Please wait a moment.' },
+});
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -53,10 +58,10 @@ function injectUserHeaders(proxyReq, req) {
   }
 }
 
-// ── /auth — no authentication required (auth service handles its own flows) ──
-//
-// Auth service routes use /auth/* prefix, so we need to re-add it after
-// Express strips the mount prefix.
+// ── /auth — public rate limit, no JWT ────────────────────────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/auth', publicLimiter);
+}
 app.use(
   '/auth',
   createProxyMiddleware({
@@ -67,7 +72,10 @@ app.use(
   })
 );
 
-// ── /metrics — JWT required ───────────────────────────────────────────────────
+// ── /metrics — authenticated rate limit, JWT required ────────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/metrics', authedLimiter);
+}
 app.use(
   '/metrics',
   authenticate,
@@ -78,7 +86,10 @@ app.use(
   })
 );
 
-// ── /export — JWT required ────────────────────────────────────────────────────
+// ── /export — authenticated rate limit, JWT required ─────────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/export', authedLimiter);
+}
 app.use(
   '/export',
   authenticate,
