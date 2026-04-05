@@ -9,6 +9,8 @@ from .base import Base
 
 
 class ScheduleBlock(Base):
+    """Pure schedule template block. All actual/logged data lives in daily_block_logs."""
+
     __tablename__ = "schedule_blocks"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -20,8 +22,8 @@ class ScheduleBlock(Base):
         nullable=False,
         index=True,
     )
-    hour_start: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False)   # 0–25.5 (supports overnight)
-    hour_end: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False)     # 0.5–26
+    hour_start: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False)
+    hour_end: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False)
     block_type: Mapped[str] = mapped_column(String(16), nullable=False)
     zone_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -32,7 +34,6 @@ class ScheduleBlock(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     gross_revenue: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, default=0)
-    actual_gross: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     platform_ids: Mapped[list] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
     )
@@ -46,10 +47,10 @@ class ScheduleBlock(Base):
         nullable=False,
     )
 
-    schedule: Mapped["Schedule"] = relationship(  # type: ignore[name-defined]
+    schedule: Mapped["Schedule"] = relationship(
         "Schedule", back_populates="blocks"
     )
-    zone_rel: Mapped["Zone"] = relationship(  # type: ignore[name-defined]
+    zone_rel: Mapped["Zone"] = relationship(
         "Zone", foreign_keys=[zone_id], lazy="select"
     )
 

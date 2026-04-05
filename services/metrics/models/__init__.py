@@ -3,6 +3,9 @@ from .calendar_entry import CalendarEntry
 from .checklist import Checklist
 from .checklist_item import ChecklistItem
 from .checklist_log import ChecklistLog
+from .daily_block_log import DailyBlockLog
+from .daily_expense import DailyExpense
+from .daily_platform_earning import DailyPlatformEarning
 from .driving_session import DrivingSession
 from .event_zone import EventZone
 from .financial_snapshot import FinancialSnapshot
@@ -21,6 +24,9 @@ __all__ = [
     "Checklist",
     "ChecklistItem",
     "ChecklistLog",
+    "DailyBlockLog",
+    "DailyExpense",
+    "DailyPlatformEarning",
     "DrivingSession",
     "EventZone",
     "FinancialSnapshot",

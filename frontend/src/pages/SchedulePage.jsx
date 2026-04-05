@@ -16,7 +16,7 @@ import {
 } from 'date-fns';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2,
-  MapPin, Zap, Briefcase, Coffee, StickyNote, Check, ChevronsUpDown, Pencil, Save, ClipboardCheck,
+  MapPin, Zap, Briefcase, Coffee, StickyNote, Check, Pencil, Save, ClipboardCheck,
 } from 'lucide-react';
 import { api } from '../lib/api';
 
@@ -494,72 +494,65 @@ function CustomJobModal({ onAdd, onClose }) {
   );
 }
 
-// ── Schedule picker dropdown ───────────────────────────────────────────────────
+// ── Schedule sidebar list ─────────────────────────────────────────────────────
 
-function SchedulePicker({ schedules, activeId, onChange, onNew }) {
-  const [open, setOpen] = useState(false);
-  const active = schedules.find((s) => s.id === activeId);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
+function ScheduleSidebar({ schedules, activeId, onChange, onNew }) {
   return (
-    <div className="relative" ref={ref}>
+    <div className="w-52 shrink-0 flex flex-col gap-2 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+      <p className="section-label px-1">Schedules</p>
+      {schedules.length === 0 && (
+        <p className="text-xs text-ink-500 px-2 py-3">No schedules yet.</p>
+      )}
+      {schedules.map((s) => {
+        const isActive = s.id === activeId;
+        const blockCount = s.blocks?.length ?? 0;
+        const totalHours = (s.blocks ?? []).reduce((sum, b) => sum + (Number(b.hour_end) - Number(b.hour_start)), 0);
+        const totalPlanned = (s.blocks ?? []).reduce((sum, b) => sum + (Number(b.gross_revenue) || 0), 0);
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onChange(s.id)}
+            className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
+              isActive
+                ? 'border-current/30 ring-1 ring-current/20'
+                : 'border-obsidian-700/50 hover:border-obsidian-600 hover:bg-obsidian-800/40'
+            }`}
+            style={isActive ? {
+              borderColor: s.color || '#6b7280',
+              backgroundColor: hexToRgba(s.color || '#6b7280', 0.08),
+            } : undefined}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: s.color || '#6b7280' }} />
+              <span className={`text-sm font-medium truncate ${isActive ? 'text-ink-50' : 'text-ink-200'}`}>
+                {s.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-ink-500 pl-4.5">
+              <span>{blockCount} blocks</span>
+              <span>·</span>
+              <span>{Math.round(totalHours * 10) / 10}h</span>
+              {totalPlanned > 0 && (
+                <>
+                  <span>·</span>
+                  <span className="font-mono">${Math.round(totalPlanned)}</span>
+                </>
+              )}
+            </div>
+            {s.description && (
+              <p className="text-[10px] text-ink-500 pl-4.5 mt-0.5 truncate">{s.description}</p>
+            )}
+          </button>
+        );
+      })}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-obsidian-800 border border-obsidian-600 text-sm text-ink-100 hover:border-obsidian-500 transition-colors min-w-48 max-w-64"
+        onClick={onNew}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-obsidian-600 text-xs text-ink-400 hover:text-ink-50 hover:border-obsidian-500 transition-colors"
       >
-        {active && <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: active.color || '#6b7280' }} />}
-        <span className="flex-1 text-left truncate">
-          {active ? active.name : <span className="text-ink-400">Select a schedule…</span>}
-        </span>
-        <ChevronsUpDown size={13} className="text-ink-400 shrink-0" />
+        <Plus size={12} /> New schedule
       </button>
-
-      {open && (
-        <div className="absolute top-full left-0 mt-1 w-72 z-30 bg-obsidian-800 border border-obsidian-600 rounded-lg shadow-xl overflow-hidden">
-          <div className="max-h-64 overflow-y-auto">
-            {schedules.length === 0 && (
-              <p className="px-3 py-3 text-xs text-ink-400">No schedules yet — create one below.</p>
-            )}
-            {schedules.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => { onChange(s.id); setOpen(false); }}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors ${
-                  s.id === activeId
-                    ? 'bg-arc/10 text-arc'
-                    : 'text-ink-200 hover:bg-obsidian-700'
-                }`}
-              >
-                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.color || '#6b7280' }} />
-                {s.id === activeId && <Check size={12} className="shrink-0" />}
-                <span className="flex-1 truncate">{s.name}</span>
-                {s.description && (
-                  <span className="text-[10px] text-ink-500 shrink-0 truncate max-w-24">{s.description}</span>
-                )}
-              </button>
-            ))}
-          </div>
-          <div className="border-t border-obsidian-600 p-2">
-            <button
-              type="button"
-              onClick={() => { setOpen(false); onNew(); }}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-ink-300 hover:bg-obsidian-700 hover:text-ink-50 transition-colors"
-            >
-              <Plus size={12} /> New schedule…
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1039,29 +1032,63 @@ export default function SchedulePage() {
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveDrag(null)}
     >
-      <div className="flex flex-col gap-4 h-full" style={{ height: 'calc(100vh - 48px)' }}>
+      <div className="flex gap-4 h-full" style={{ height: 'calc(100vh - 48px)' }}>
 
-        {/* Header */}
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="page-title">Schedule</h1>
-            {activeSchedule?.description && (
-              <p className="text-xs text-ink-400 mt-0.5">{activeSchedule.description}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <SchedulePicker
-              schedules={schedules}
-              activeId={activeId}
-              onChange={setActiveId}
-              onNew={() => setShowNew(true)}
-            />
-            {activeId && (
-              <div className="flex items-center gap-1">
+        {/* Left: schedule list + calendar */}
+        <div className="flex flex-col gap-3 shrink-0">
+          <ScheduleSidebar
+            schedules={schedules}
+            activeId={activeId}
+            onChange={setActiveId}
+            onNew={() => setShowNew(true)}
+          />
+
+          {/* Calendar toggle */}
+          <button
+            type="button"
+            onClick={() => setShowCalendar((v) => !v)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all w-52 ${
+              showCalendar
+                ? 'border-arc/40 bg-arc/10 text-arc'
+                : 'border-obsidian-600 text-ink-400 hover:text-ink-50 hover:border-obsidian-500'
+            }`}
+          >
+            <ChevronRight size={12} className={`transition-transform ${showCalendar ? 'rotate-90' : ''}`} />
+            <span className="font-medium">Calendar</span>
+          </button>
+          {showCalendar && (
+            <div className="w-52">
+              <MonthCalendar
+                month={calMonth}
+                onMonthChange={handleMonthChange}
+                calendarEntries={calendarEntries}
+                schedules={schedules}
+                activeId={activeId}
+                onToggleDate={handleToggleDate}
+                disabled={!activeId}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Right: editor area */}
+        <div className="flex flex-col gap-3 flex-1 min-w-0">
+
+          {/* Schedule header bar */}
+          {activeId && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: activeSchedule?.color || '#6b7280' }} />
+                <h2 className="text-sm font-semibold text-ink-100 truncate">{activeSchedule?.name}</h2>
+                {activeSchedule?.description && (
+                  <span className="text-[10px] text-ink-500 truncate">— {activeSchedule.description}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
                 <input
                   type="color"
-                  title="Schedule color — pick then close to save"
-                  className="w-7 h-7 rounded cursor-pointer border border-obsidian-600 bg-transparent"
+                  title="Schedule color"
+                  className="w-6 h-6 rounded cursor-pointer border border-obsidian-600 bg-transparent"
                   defaultValue={activeSchedule?.color || '#6b7280'}
                   key={activeSchedule?.color}
                   onBlur={(e) => {
@@ -1074,102 +1101,55 @@ export default function SchedulePage() {
                     window._colorTimer = setTimeout(() => handleChecklistAssign('color', e.target.value), 500);
                   }}
                 />
+                <select
+                  className="arc-input text-[10px] py-1"
+                  title="Pre-Day Checklist"
+                  value={activeSchedule?.pre_day_checklist_id ?? ''}
+                  onChange={(e) => handleChecklistAssign('pre_day_checklist_id', e.target.value)}
+                >
+                  <option value="">Pre-Day: None</option>
+                  {allChecklists.filter((c) => c.checklist_type === 'pre_day').map((c) => (
+                    <option key={c.id} value={c.id}>Pre: {c.name}</option>
+                  ))}
+                </select>
+                <select
+                  className="arc-input text-[10px] py-1"
+                  title="Post-Day Checklist"
+                  value={activeSchedule?.post_day_checklist_id ?? ''}
+                  onChange={(e) => handleChecklistAssign('post_day_checklist_id', e.target.value)}
+                >
+                  <option value="">Post-Day: None</option>
+                  {allChecklists.filter((c) => c.checklist_type === 'post_day').map((c) => (
+                    <option key={c.id} value={c.id}>Post: {c.name}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={handleDeleteSchedule}
                   title="Delete this schedule"
-                  className="p-2 rounded-lg text-ink-400 hover:text-error hover:bg-error/10 transition-colors"
+                  className="p-1.5 rounded text-ink-400 hover:text-error hover:bg-error/10 transition-colors"
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={13} />
                 </button>
               </div>
-            )}
-            {activeId && (
-              <>
-                <div>
-                  <p className="section-label mb-0.5">Pre-Day Checklist</p>
-                  <select
-                    className="arc-input text-xs"
-                    value={activeSchedule?.pre_day_checklist_id ?? ''}
-                    onChange={(e) => handleChecklistAssign('pre_day_checklist_id', e.target.value)}
-                  >
-                    <option value="">None</option>
-                    {allChecklists.filter((c) => c.checklist_type === 'pre_day').map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <p className="section-label mb-0.5">Post-Day Checklist</p>
-                  <select
-                    className="arc-input text-xs"
-                    value={activeSchedule?.post_day_checklist_id ?? ''}
-                    onChange={(e) => handleChecklistAssign('post_day_checklist_id', e.target.value)}
-                  >
-                    <option value="">None</option>
-                    {allChecklists.filter((c) => c.checklist_type === 'post_day').map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Calendar toggle + popout */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowCalendar((v) => !v)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all w-full ${
-              showCalendar
-                ? 'border-arc/40 bg-arc/10 text-arc'
-                : 'border-obsidian-600 text-ink-400 hover:text-ink-50 hover:border-obsidian-500'
-            }`}
-          >
-            <ChevronRight size={12} className={`transition-transform ${showCalendar ? 'rotate-90' : ''}`} />
-            <span className="font-medium">Calendar</span>
-            <span className="text-ink-500 ml-auto">{format(calMonth, 'MMMM yyyy')}</span>
-            {activeSchedule && (
-              <span className="text-[10px] text-ink-500">
-                — assigning <span className="text-ink-300">{activeSchedule.name}</span>
-              </span>
-            )}
-          </button>
-          {showCalendar && (
-            <div className="mt-2">
-              <MonthCalendar
-                month={calMonth}
-                onMonthChange={handleMonthChange}
-                calendarEntries={calendarEntries}
-                schedules={schedules}
-                activeId={activeId}
-                onToggleDate={handleToggleDate}
-                disabled={!activeId}
-              />
-              {!activeId && (
-                <p className="text-[10px] text-ink-500 mt-1 px-1">Select a schedule above to assign it to days</p>
-              )}
             </div>
           )}
-        </div>
 
-        {/* Body */}
-        {!activeId ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-3">
-              <p className="text-ink-400 text-sm">No schedule selected</p>
-              <button type="button" onClick={() => setShowNew(true)} className="btn-primary gap-1.5">
-                <Plus size={14} /> Create a schedule
-              </button>
+          {/* Palette + Timeline */}
+          {!activeId ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <p className="text-ink-400 text-sm">Select a schedule to edit</p>
+                <button type="button" onClick={() => setShowNew(true)} className="btn-primary gap-1.5">
+                  <Plus size={14} /> Create a schedule
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex gap-4 flex-1 min-h-0">
+          ) : (
+            <div className="flex gap-4 flex-1 min-h-0">
 
-            {/* Palette */}
-            <div className="w-48 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
+              {/* Palette */}
+              <div className="w-48 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
 
               {/* Zones grouped by type */}
               <div>
@@ -1281,6 +1261,7 @@ export default function SchedulePage() {
             </div>
           </div>
         )}
+        </div>{/* end right column */}
       </div>
 
       {/* Drag overlay */}

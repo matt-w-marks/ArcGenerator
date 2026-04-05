@@ -54,7 +54,6 @@ class BlockUpdate(BaseModel):
     notes:         str | None = None
     sort_order:    int | None = None
     gross_revenue: float | None = Field(default=None, ge=0)
-    actual_gross:  float | None = Field(default=None, ge=0)
     platform_ids:  list[UUID] | None = None
 
 
@@ -70,7 +69,6 @@ class BlockResponse(BaseModel):
     notes:           str | None
     sort_order:      int
     gross_revenue:   float
-    actual_gross:    float | None
     platform_ids:    list[UUID] = []
     platform_names:  list[str] = []
     platform_colors: list[str] = []
@@ -91,7 +89,6 @@ class BlockResponse(BaseModel):
             notes=block.notes,
             sort_order=block.sort_order,
             gross_revenue=float(block.gross_revenue),
-            actual_gross=float(block.actual_gross) if block.actual_gross is not None else None,
             platform_ids=list(ids),
             platform_names=[p.name for p in plats],
             platform_colors=[p.color for p in plats if p.color],
