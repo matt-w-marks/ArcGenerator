@@ -10,6 +10,7 @@ import {
   Map,
   CalendarDays,
   Database,
+  BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -18,8 +19,9 @@ const NAV_SECTIONS = [
   {
     label: null,
     items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/', label: 'Shift Log', icon: LayoutDashboard, end: true },
       { to: '/schedule', label: 'Schedule', icon: CalendarDays },
+      { to: '/reports', label: 'Reports', icon: BarChart3 },
     ],
   },
   {
