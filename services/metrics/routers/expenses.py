@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from audit import audit, diff, snapshot, get_user_id
 from database import get_db
-from models import Budget, BudgetCategory, BusinessExpense, DailyBlockLog, DailyExpense, RecurringExpense
+from models import BudgetCategory, BudgetItem, BusinessExpense, DailyBlockLog, DailyExpense, RecurringExpense
 from role_guard import require_role
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -265,144 +265,195 @@ def disable_category(name: str, db: Session = Depends(get_db), user_id: UUID | N
     db.commit()
 
 
-# ── Budgets (monthly allocations) ─────────────────────────────────────────────
-
-def _budget_response(b: Budget, cat_map: dict) -> BudgetResponse:
-    c = cat_map.get(b.budget_category)
-    return BudgetResponse(id=b.id, budget_category=b.budget_category,
-        label=c.label if c else b.budget_category,
-        monthly_amount=float(b.monthly_amount),
-        tax_deductible=c.tax_deductible if c else False,
-        tax_notes=c.tax_notes if c else None,
-        notes=b.notes)
+# ── Budget Items (planned expense list per month) ─────────────────────────────
 
 def _cat_map(db: Session) -> dict:
     return {c.name: c for c in db.query(BudgetCategory).all()}
 
-@router.get("/budgets", response_model=list[BudgetResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
-def list_budgets(db: Session = Depends(get_db), month: str = Query(default=None)):
-    if not month:
-        month = date.today().strftime("%Y-%m")
-    cm = _cat_map(db)
-    return [_budget_response(b, cm) for b in db.query(Budget).filter(Budget.month == month).order_by(Budget.budget_category).all()]
+class BudgetItemResponse(BaseModel):
+    id: UUID
+    month: str
+    name: str
+    budget_category: str
+    category_label: str
+    planned_amount: float
+    actual_amount: float
+    variance: float
+    frequency_note: str | None
+    recurring_expense_id: UUID | None
+    vehicle_id: UUID | None
+    tax_deductible: bool
+    notes: str | None
 
-@router.post("/budgets", response_model=BudgetResponse, status_code=201, dependencies=[require_role("ADMIN")])
-def add_budget_item(body: BudgetCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
-    cat = db.query(BudgetCategory).filter(BudgetCategory.name == body.budget_category).first()
-    if cat is None:
-        raise HTTPException(404, "Category not found in master list")
-    existing = db.query(Budget).filter(Budget.budget_category == body.budget_category, Budget.month == body.month).first()
-    if existing:
-        raise HTTPException(409, f"{body.budget_category} already exists for {body.month}")
-    b = Budget(budget_category=body.budget_category, month=body.month, monthly_amount=body.monthly_amount, notes=body.notes)
-    db.add(b)
-    db.flush()
-    audit(db, "budgets", b.id, "CREATE", user_id, snapshot({"category": body.budget_category, "month": body.month, "amount": float(body.monthly_amount)}))
-    db.commit()
-    db.refresh(b)
-    return _budget_response(b, _cat_map(db))
+def _item_response(item: BudgetItem, actual: float, cm: dict) -> BudgetItemResponse:
+    c = cm.get(item.budget_category)
+    planned = float(item.planned_amount)
+    return BudgetItemResponse(
+        id=item.id, month=item.month, name=item.name,
+        budget_category=item.budget_category,
+        category_label=c.label if c else item.budget_category,
+        planned_amount=planned, actual_amount=round(actual, 2),
+        variance=round(actual - planned, 2),
+        frequency_note=item.frequency_note,
+        recurring_expense_id=item.recurring_expense_id,
+        vehicle_id=item.vehicle_id,
+        tax_deductible=c.tax_deductible if c else False,
+        notes=item.notes,
+    )
 
-@router.put("/budgets/{category}", response_model=BudgetResponse, dependencies=[require_role("ADMIN")])
-def update_budget(category: str, body: BudgetUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(default=None)):
-    if not month:
-        month = date.today().strftime("%Y-%m")
-    b = db.query(Budget).filter(Budget.budget_category == category, Budget.month == month).first()
-    if b is None:
-        raise HTTPException(404, "Budget not found for that category/month")
-    old_amt = float(b.monthly_amount)
-    b.monthly_amount = body.monthly_amount
-    if body.notes is not None:
-        b.notes = body.notes
-    if old_amt != body.monthly_amount:
-        audit(db, "budgets", b.id, "UPDATE", user_id, {"monthly_amount": {"old": old_amt, "new": body.monthly_amount}, "month": month})
-    db.commit()
-    db.refresh(b)
-    return _budget_response(b, _cat_map(db))
-
-@router.delete("/budgets/{category}", status_code=204, dependencies=[require_role("ADMIN")])
-def remove_budget_item(category: str, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(default=None)):
-    if not month:
-        month = date.today().strftime("%Y-%m")
-    b = db.query(Budget).filter(Budget.budget_category == category, Budget.month == month).first()
-    if b is None:
-        raise HTTPException(404, "Budget not found for that category/month")
-    audit(db, "budgets", b.id, "DELETE", user_id, snapshot({"category": category, "month": month, "amount": float(b.monthly_amount)}))
-    db.delete(b)
-    db.commit()
-
-@router.post("/budgets/copy", dependencies=[require_role("ADMIN")])
-def copy_budgets(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id),
-                 from_month: str = Query(..., alias="from"), to_month: str = Query(..., alias="to")):
-    source = db.query(Budget).filter(Budget.month == from_month).all()
-    if not source:
-        raise HTTPException(404, f"No budgets found for {from_month}")
-    existing = db.query(Budget).filter(Budget.month == to_month).all()
-    if existing:
-        raise HTTPException(409, f"Budgets already exist for {to_month}")
-    for b in source:
-        db.add(Budget(budget_category=b.budget_category, month=to_month, monthly_amount=b.monthly_amount, notes=b.notes))
-    db.flush()
-    audit(db, "budgets", source[0].id, "CREATE", user_id, {"action": f"copied {len(source)} budgets {from_month} -> {to_month}"})
-    db.commit()
-    return {"copied": len(source), "from_month": from_month, "to_month": to_month}
-
-@router.get("/budgets/months", dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
-def list_budget_months(db: Session = Depends(get_db)):
-    rows = db.query(Budget.month).distinct().order_by(Budget.month).all()
-    return [r[0] for r in rows]
-
-@router.get("/budgets/summary", response_model=list[BudgetSummaryRow], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
-def budget_summary(db: Session = Depends(get_db), month: str = Query(...)):
-    try:
-        year, mon = map(int, month.split("-"))
-    except ValueError:
-        raise HTTPException(422, "month must be YYYY-MM")
-
+def _actuals_for_month(db: Session, month: str) -> dict:
+    """Get actual spending per budget_item_id and per category for a month."""
     from datetime import date as d
+    year, mon = map(int, month.split("-"))
     month_start = d(year, mon, 1)
     month_end = d(year, mon + 1, 1) if mon < 12 else d(year + 1, 1, 1)
 
-    biz = (
-        db.query(BusinessExpense.budget_category, sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
-        .filter(BusinessExpense.date >= month_start, BusinessExpense.date < month_end, BusinessExpense.deleted_at.is_(None))
-        .group_by(BusinessExpense.budget_category)
-        .all()
+    # By budget_item_id (direct link)
+    by_item = dict(
+        db.query(BusinessExpense.budget_item_id, sqf.sum(BusinessExpense.amount))
+        .filter(BusinessExpense.budget_item_id.isnot(None),
+                BusinessExpense.date >= month_start, BusinessExpense.date < month_end,
+                BusinessExpense.deleted_at.is_(None))
+        .group_by(BusinessExpense.budget_item_id).all()
     )
-    biz_map = {cat: float(amt) for cat, amt in biz}
 
+    # By category (for items without direct link)
+    by_cat = dict(
+        db.query(BusinessExpense.budget_category, sqf.sum(BusinessExpense.amount))
+        .filter(BusinessExpense.budget_item_id.is_(None),
+                BusinessExpense.date >= month_start, BusinessExpense.date < month_end,
+                BusinessExpense.deleted_at.is_(None))
+        .group_by(BusinessExpense.budget_category).all()
+    )
+
+    # Daily expenses mapped to budget categories
     daily = (
-        db.query(DailyExpense.category, sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
+        db.query(DailyExpense.category, sqf.sum(DailyExpense.amount))
         .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
         .filter(DailyBlockLog.entry_date >= month_start, DailyBlockLog.entry_date < month_end,
                 DailyBlockLog.deleted_at.is_(None), DailyExpense.deleted_at.is_(None))
-        .group_by(DailyExpense.category)
-        .all()
+        .group_by(DailyExpense.category).all()
     )
     for cat, amt in daily:
         budget_cat = DAILY_TO_BUDGET.get(cat, "other")
-        biz_map[budget_cat] = biz_map.get(budget_cat, 0) + float(amt)
+        by_cat[budget_cat] = by_cat.get(budget_cat, 0) + float(amt)
 
+    return {"by_item": {k: float(v) for k, v in by_item.items()}, "by_cat": {k: float(v) for k, v in by_cat.items()}}
+
+@router.get("/budget-items", response_model=list[BudgetItemResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
+def list_budget_items(db: Session = Depends(get_db), month: str = Query(default=None)):
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    items = db.query(BudgetItem).filter(BudgetItem.month == month).order_by(BudgetItem.budget_category, BudgetItem.name).all()
     cm = _cat_map(db)
-    budget_objs = {b.budget_category: b for b in db.query(Budget).filter(Budget.month == month).all()}
-    # Include all categories that have either a budget allocation or spending
-    all_cats = set(budget_objs.keys()) | set(biz_map.keys())
-    rows = []
-    for cat in sorted(all_cats):
-        b = budget_objs.get(cat)
-        c = cm.get(cat)
-        allocated = float(b.monthly_amount) if b else 0
-        spent = biz_map.get(cat, 0)
-        rows.append(BudgetSummaryRow(
-            budget_category=cat,
-            label=c.label if c else cat,
-            monthly_amount=round(allocated, 2),
-            spent=round(spent, 2),
-            remaining=round(allocated - spent, 2),
-            pct_used=round(spent / allocated * 100, 1) if allocated > 0 else 0,
-            tax_deductible=c.tax_deductible if c else False,
-            tax_notes=c.tax_notes if c else None,
+    actuals = _actuals_for_month(db, month)
+    results = []
+    for item in items:
+        actual = actuals["by_item"].get(item.id, 0)
+        if actual == 0:
+            actual = actuals["by_cat"].get(item.budget_category, 0)
+        results.append(_item_response(item, actual, cm))
+    return results
+
+class BudgetItemCreate(BaseModel):
+    month: str = Field(pattern="^\\d{4}-\\d{2}$")
+    name: str = Field(min_length=1, max_length=128)
+    budget_category: str
+    planned_amount: float = Field(ge=0)
+    frequency_note: str | None = None
+    recurring_expense_id: UUID | None = None
+    vehicle_id: UUID | None = None
+    notes: str | None = None
+
+@router.post("/budget-items", response_model=BudgetItemResponse, status_code=201, dependencies=[require_role("ADMIN")])
+def create_budget_item(body: BudgetItemCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    item = BudgetItem(**body.model_dump())
+    db.add(item)
+    db.flush()
+    audit(db, "budget_items", item.id, "CREATE", user_id, snapshot({
+        "name": item.name, "month": item.month, "planned_amount": float(item.planned_amount),
+    }))
+    db.commit()
+    db.refresh(item)
+    return _item_response(item, 0, _cat_map(db))
+
+@router.put("/budget-items/{item_id}", response_model=BudgetItemResponse, dependencies=[require_role("ADMIN")])
+def update_budget_item(item_id: UUID, body: BudgetUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    item = db.get(BudgetItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Budget item not found")
+    old = float(item.planned_amount)
+    item.planned_amount = body.monthly_amount
+    if body.notes is not None:
+        item.notes = body.notes
+    if old != body.monthly_amount:
+        audit(db, "budget_items", item.id, "UPDATE", user_id, {"planned_amount": {"old": old, "new": body.monthly_amount}})
+    db.commit()
+    db.refresh(item)
+    return _item_response(item, 0, _cat_map(db))
+
+@router.delete("/budget-items/{item_id}", status_code=204, dependencies=[require_role("ADMIN")])
+def delete_budget_item(item_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    item = db.get(BudgetItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Budget item not found")
+    audit(db, "budget_items", item.id, "DELETE", user_id, snapshot({"name": item.name, "month": item.month}))
+    db.delete(item)
+    db.commit()
+
+@router.post("/budget-items/populate", dependencies=[require_role("ADMIN")])
+def populate_from_recurring(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(...)):
+    """Auto-populate budget items from active recurring expenses."""
+    from calendar import monthrange
+    year, mon = map(int, month.split("-"))
+    days_in_month = monthrange(year, mon)[1]
+
+    recs = db.query(RecurringExpense).filter(
+        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None)
+    ).all()
+
+    existing_names = {i.name for i in db.query(BudgetItem).filter(BudgetItem.month == month).all()}
+    count = 0
+    for rec in recs:
+        name = rec.vendor or rec.description or rec.budget_category
+        if name in existing_names:
+            continue
+        mult = FREQ_TO_MONTHLY.get(rec.frequency, 1.0)
+        projected = round(float(rec.amount) * mult, 2)
+        db.add(BudgetItem(
+            month=month, name=name, budget_category=rec.budget_category,
+            planned_amount=projected, frequency_note=f"{rec.frequency} @ ${rec.amount}",
+            recurring_expense_id=rec.id, vehicle_id=rec.vehicle_id,
         ))
-    return rows
+        existing_names.add(name)
+        count += 1
+    if count > 0:
+        db.commit()
+    return {"populated": count, "month": month}
+
+@router.post("/budget-items/copy", dependencies=[require_role("ADMIN")])
+def copy_budget(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id),
+                from_month: str = Query(..., alias="from"), to_month: str = Query(..., alias="to")):
+    source = db.query(BudgetItem).filter(BudgetItem.month == from_month).all()
+    if not source:
+        raise HTTPException(404, f"No budget items for {from_month}")
+    existing = db.query(BudgetItem).filter(BudgetItem.month == to_month).all()
+    if existing:
+        raise HTTPException(409, f"Budget items already exist for {to_month}")
+    for item in source:
+        db.add(BudgetItem(
+            month=to_month, name=item.name, budget_category=item.budget_category,
+            planned_amount=item.planned_amount, frequency_note=item.frequency_note,
+            recurring_expense_id=item.recurring_expense_id, vehicle_id=item.vehicle_id,
+            notes=item.notes,
+        ))
+    db.commit()
+    return {"copied": len(source), "from_month": from_month, "to_month": to_month}
+
+@router.get("/budget-items/months", dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
+def list_budget_months(db: Session = Depends(get_db)):
+    rows = db.query(BudgetItem.month).distinct().order_by(BudgetItem.month).all()
+    return [r[0] for r in rows]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
