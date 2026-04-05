@@ -660,6 +660,9 @@ export default function DataPage() {
 
       {/* Financial Config */}
       <FinancialConfigCard />
+
+      {/* Audit History */}
+      <AuditHistoryCard />
     </div>
   );
 }
@@ -756,6 +759,110 @@ function FinancialConfigCard() {
             {saving ? 'Saving…' : 'Save Config'}
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Audit history card ────────────────────────────────────────────────────────
+
+const TABLE_LABELS = {
+  system_config: 'Config',
+  daily_block_logs: 'Shift Log',
+  daily_expenses: 'Expense',
+  daily_platform_earnings: 'Platform Earning',
+};
+
+const ACTION_STYLES = {
+  CREATE: 'bg-success/15 text-success',
+  UPDATE: 'bg-arc/15 text-arc',
+  DELETE: 'bg-error/15 text-error',
+  RESTORE: 'bg-neural/15 text-neural',
+};
+
+function AuditHistoryCard() {
+  const [logs, setLogs] = useState([]);
+  const [filter, setFilter] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
+  async function load(table) {
+    setLoading(true);
+    const q = table ? `?table=${table}&limit=50` : '?limit=50';
+    const r = await api.get(`/metrics/audit-logs${q}`);
+    if (r.ok) setLogs(await r.json());
+    setLoading(false);
+  }
+
+  useEffect(() => { load(filter); }, [filter]);
+
+  return (
+    <div className="metal-card overflow-hidden">
+      <div className="px-4 py-3 border-b border-obsidian-700">
+        <h2 className="text-sm font-semibold text-ink-100">Audit History</h2>
+        <p className="text-xs text-ink-500 mt-0.5">
+          Every change to shift logs, expenses, platform earnings, and config is recorded here.
+        </p>
+      </div>
+
+      <div className="px-4 py-3 border-b border-obsidian-700/50 flex items-center gap-2">
+        <select className="arc-input text-xs font-light py-1 w-40" value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <option value="">All tables</option>
+          <option value="system_config">Config</option>
+          <option value="daily_block_logs">Shift Logs</option>
+          <option value="daily_expenses">Expenses</option>
+          <option value="daily_platform_earnings">Platform Earnings</option>
+        </select>
+        {loading && <span className="text-[10px] text-ink-500">Loading…</span>}
+      </div>
+
+      <div className="max-h-96 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+        {logs.length === 0 && (
+          <p className="text-xs text-ink-500 px-4 py-6 text-center">No audit entries yet.</p>
+        )}
+        {logs.map((entry) => (
+          <div key={entry.id} className="border-b border-obsidian-700/30">
+            <button
+              type="button"
+              onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-obsidian-800/30 transition-colors"
+            >
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${ACTION_STYLES[entry.action] || 'bg-obsidian-700 text-ink-400'}`}>
+                {entry.action}
+              </span>
+              <span className="text-[10px] text-ink-300 font-bold">
+                {TABLE_LABELS[entry.table_name] || entry.table_name}
+              </span>
+              <span className="text-[10px] text-ink-600 font-mono truncate flex-1">
+                {entry.record_id.slice(0, 8)}
+              </span>
+              <span className="text-[10px] text-ink-500 font-mono shrink-0">
+                {new Date(entry.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              </span>
+            </button>
+            {expanded === entry.id && (
+              <div className="px-4 pb-3 space-y-1.5">
+                {entry.user_id && (
+                  <p className="text-[9px] text-ink-500">User: <span className="font-mono">{entry.user_id.slice(0, 8)}…</span></p>
+                )}
+                {Object.entries(entry.changes).map(([field, val]) => (
+                  <div key={field} className="flex items-start gap-2 text-[10px]">
+                    <span className="text-ink-50 font-bold uppercase shrink-0 w-28 truncate">{field}</span>
+                    {typeof val === 'object' && val !== null && 'old' in val ? (
+                      <span className="font-light font-mono text-ink-300">
+                        <span className="text-error">{JSON.stringify(val.old)}</span>
+                        {' → '}
+                        <span className="text-success">{JSON.stringify(val.new)}</span>
+                      </span>
+                    ) : (
+                      <span className="font-light font-mono text-ink-300">{JSON.stringify(val)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
