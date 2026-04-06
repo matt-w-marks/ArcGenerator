@@ -80,3 +80,5 @@ db/backups/
 
 # Reporting handoff scratchpads
 REPORTING_HANDOFF*.md
+SECURITY_AUDIT*.md
+security_audit/
