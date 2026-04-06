@@ -11,6 +11,13 @@
 #   PG_ADMIN_PW    — Postgres admin password
 #   ARCGEN_PW      — Password to assign to the new arcgen user
 #
+echo "[bootstrap] starting at $(date -u +%FT%TZ)"
+echo "[bootstrap] PG_HOST=${PG_HOST:-<unset>}"
+echo "[bootstrap] PG_ADMIN_USER=${PG_ADMIN_USER:-<unset>}"
+echo "[bootstrap] PG_ADMIN_PW length: ${#PG_ADMIN_PW}"
+echo "[bootstrap] ARCGEN_PW length: ${#ARCGEN_PW}"
+echo "[bootstrap] which psql: $(which psql)"
+psql --version
 set -euo pipefail
 
 : "${PG_HOST:?PG_HOST is required}"
