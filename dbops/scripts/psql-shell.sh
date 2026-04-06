@@ -18,14 +18,21 @@ set -euo pipefail
 
 PG_DB="${PG_DB:-postgres}"
 
-IMDS_URL="http://169.254.169.254/metadata/identity/oauth2/token"
-IMDS_PARAMS="api-version=2018-02-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=${AZURE_CLIENT_ID}"
+RESOURCE="https://ossrdbms-aad.database.windows.net"
 
-TOKEN_JSON="$(curl -s --max-time 10 -H 'Metadata: true' "${IMDS_URL}?${IMDS_PARAMS}")"
+if [ -n "${IDENTITY_ENDPOINT:-}" ] && [ -n "${IDENTITY_HEADER:-}" ]; then
+  TOKEN_URL="${IDENTITY_ENDPOINT}?api-version=2019-08-01&resource=${RESOURCE}&client_id=${AZURE_CLIENT_ID}"
+  TOKEN_JSON="$(curl -s --max-time 10 -H "X-IDENTITY-HEADER: ${IDENTITY_HEADER}" "$TOKEN_URL" || echo '{}')"
+else
+  IMDS_URL="http://169.254.169.254/metadata/identity/oauth2/token"
+  TOKEN_URL="${IMDS_URL}?api-version=2018-02-01&resource=${RESOURCE}&client_id=${AZURE_CLIENT_ID}"
+  TOKEN_JSON="$(curl -s --max-time 10 -H 'Metadata: true' "$TOKEN_URL" || echo '{}')"
+fi
+
 PG_TOKEN="$(echo "$TOKEN_JSON" | jq -r '.access_token // empty')"
 
 if [ -z "$PG_TOKEN" ]; then
-  echo "FAILED to obtain access token from IMDS" >&2
+  echo "FAILED to obtain Entra access token" >&2
   exit 1
 fi
 

@@ -33,20 +33,37 @@ psql --version
 : "${PG_ADMIN_NAME:?PG_ADMIN_NAME is required}"
 : "${AZURE_CLIENT_ID:?AZURE_CLIENT_ID is required}"
 
-# ── Fetch an Entra access token from the Azure IMDS endpoint ────────────────
-# IMDS is reachable at the link-local address 169.254.169.254 from any compute
-# inside Azure. Container Apps proxies it to its workloads. The audience must
-# be the OSS RDBMS resource URL.
-echo "[bootstrap] fetching Entra access token from IMDS"
-IMDS_URL="http://169.254.169.254/metadata/identity/oauth2/token"
-IMDS_PARAMS="api-version=2018-02-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=${AZURE_CLIENT_ID}"
+# ── Fetch an Entra access token ─────────────────────────────────────────────
+# Container Apps injects two env vars into every workload:
+#   IDENTITY_ENDPOINT — managed identity sidecar URL (App Service-style)
+#   IDENTITY_HEADER   — secret header value the sidecar requires
+# This is *different* from the VM/IMDS endpoint at 169.254.169.254. Container
+# Apps' sidecar uses the App Service identity protocol (api-version 2019-08-01,
+# X-IDENTITY-HEADER instead of "Metadata: true").
+#
+# We try the Container Apps endpoint first; if those env vars are missing
+# (e.g. running on a VM during dev), fall back to IMDS at 169.254.169.254.
+echo "[bootstrap] fetching Entra access token"
+RESOURCE="https://ossrdbms-aad.database.windows.net"
 
-TOKEN_JSON="$(curl -s --max-time 10 -H 'Metadata: true' "${IMDS_URL}?${IMDS_PARAMS}")"
+if [ -n "${IDENTITY_ENDPOINT:-}" ] && [ -n "${IDENTITY_HEADER:-}" ]; then
+  echo "[bootstrap]   using Container Apps identity endpoint: $IDENTITY_ENDPOINT"
+  TOKEN_URL="${IDENTITY_ENDPOINT}?api-version=2019-08-01&resource=${RESOURCE}&client_id=${AZURE_CLIENT_ID}"
+  TOKEN_JSON="$(curl -s --max-time 10 -H "X-IDENTITY-HEADER: ${IDENTITY_HEADER}" "$TOKEN_URL" || echo '{}')"
+else
+  echo "[bootstrap]   no IDENTITY_ENDPOINT in env, falling back to IMDS"
+  IMDS_URL="http://169.254.169.254/metadata/identity/oauth2/token"
+  TOKEN_URL="${IMDS_URL}?api-version=2018-02-01&resource=${RESOURCE}&client_id=${AZURE_CLIENT_ID}"
+  TOKEN_JSON="$(curl -s --max-time 10 -H 'Metadata: true' "$TOKEN_URL" || echo '{}')"
+fi
+
 PG_TOKEN="$(echo "$TOKEN_JSON" | jq -r '.access_token // empty')"
 
 if [ -z "$PG_TOKEN" ]; then
-  echo "[bootstrap] FAILED to obtain access token. IMDS response was:"
-  echo "$TOKEN_JSON" | jq -C . || echo "$TOKEN_JSON"
+  echo "[bootstrap] FAILED to obtain access token. Response was:"
+  echo "$TOKEN_JSON" | jq -C . 2>/dev/null || echo "$TOKEN_JSON"
+  echo "[bootstrap] env dump (token-related only):"
+  env | grep -E '^(IDENTITY_|MSI_|AZURE_)' | sed 's/HEADER=.*/HEADER=<redacted>/'
   exit 1
 fi
 echo "[bootstrap] token acquired (length: ${#PG_TOKEN})"
