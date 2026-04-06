@@ -1,20 +1,33 @@
 #!/bin/bash
 #
-# psql-shell.sh — open a psql session against the configured database.
+# psql-shell.sh — open a psql session against the configured database using
+# Microsoft Entra token auth (matches the bootstrap script's auth method).
 #
 # Required environment variables:
-#   PG_HOST        — Postgres FQDN
-#   PG_USER        — Postgres user (defaults to arcgen)
-#   PG_PASSWORD    — Postgres password
-#   PG_DB          — Database name (defaults to arcgenerator)
+#   PG_HOST          — Postgres FQDN
+#   PG_USER          — Postgres user (must match an Entra principal mapped to
+#                      a Postgres role; e.g. "id-arcforge-pg-admin")
+#   AZURE_CLIENT_ID  — Client ID of the user-assigned managed identity to use
+#   PG_DB            — Database name (defaults to postgres)
 #
 set -euo pipefail
 
 : "${PG_HOST:?PG_HOST is required}"
-: "${PG_PASSWORD:?PG_PASSWORD is required}"
+: "${PG_USER:?PG_USER is required}"
+: "${AZURE_CLIENT_ID:?AZURE_CLIENT_ID is required}"
 
-PG_USER="${PG_USER:-arcgen}"
-PG_DB="${PG_DB:-arcgenerator}"
+PG_DB="${PG_DB:-postgres}"
 
-export PGPASSWORD="$PG_PASSWORD"
+IMDS_URL="http://169.254.169.254/metadata/identity/oauth2/token"
+IMDS_PARAMS="api-version=2018-02-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=${AZURE_CLIENT_ID}"
+
+TOKEN_JSON="$(curl -s --max-time 10 -H 'Metadata: true' "${IMDS_URL}?${IMDS_PARAMS}")"
+PG_TOKEN="$(echo "$TOKEN_JSON" | jq -r '.access_token // empty')"
+
+if [ -z "$PG_TOKEN" ]; then
+  echo "FAILED to obtain access token from IMDS" >&2
+  exit 1
+fi
+
+export PGPASSWORD="$PG_TOKEN"
 exec psql "host=$PG_HOST user=$PG_USER dbname=$PG_DB sslmode=require"
