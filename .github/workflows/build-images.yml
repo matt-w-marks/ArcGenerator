@@ -1,0 +1,129 @@
+name: Build container images
+
+# Build (and push to ACR) every changed service on every push to main.
+# Build-only — no auto-deploy. Manually create a new revision in the portal
+# (or via `az containerapp update`) to roll out a new image.
+#
+# Requires three repository secrets:
+#   AZURE_CLIENT_ID       — federated app reg client ID (arcforge-github-actions)
+#   AZURE_TENANT_ID       — Entra tenant ID
+#   AZURE_SUBSCRIPTION_ID — target subscription
+#
+# The app reg must have:
+#   - Federated credential for repo:matt-w-marks/ArcGenerator:ref:refs/heads/main
+#   - AcrPush role on arcforgeacrprd
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_build_all:
+        description: 'Build every image regardless of changes'
+        required: false
+        default: 'false'
+
+permissions:
+  id-token: write   # required for Azure OIDC
+  contents: read
+
+env:
+  ACR_NAME: arcforgeacrprd
+  ACR_LOGIN_SERVER: arcforgeacrprd.azurecr.io
+
+jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      auth: ${{ steps.filter.outputs.auth }}
+      metrics: ${{ steps.filter.outputs.metrics }}
+      export: ${{ steps.filter.outputs.export }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      dbops: ${{ steps.filter.outputs.dbops }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            auth:
+              - 'services/auth/**'
+            metrics:
+              - 'services/metrics/**'
+            export:
+              - 'services/export/**'
+            gateway:
+              - 'gateway/**'
+            frontend:
+              - 'frontend/**'
+            dbops:
+              - 'dbops/**'
+
+  build:
+    name: Build ${{ matrix.service }}
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: auth
+            context: services/auth
+            changed: ${{ needs.detect-changes.outputs.auth }}
+          - service: metrics
+            context: services/metrics
+            changed: ${{ needs.detect-changes.outputs.metrics }}
+          - service: export
+            context: services/export
+            changed: ${{ needs.detect-changes.outputs.export }}
+          - service: gateway
+            context: gateway
+            changed: ${{ needs.detect-changes.outputs.gateway }}
+          - service: frontend
+            context: frontend
+            changed: ${{ needs.detect-changes.outputs.frontend }}
+          - service: dbops
+            context: dbops
+            changed: ${{ needs.detect-changes.outputs.dbops }}
+    steps:
+      - name: Skip if unchanged
+        if: matrix.changed != 'true' && github.event.inputs.force_build_all != 'true'
+        run: |
+          echo "No changes in ${{ matrix.context }} — skipping build."
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: matrix.changed == 'true' || github.event.inputs.force_build_all == 'true'
+
+      - name: Azure login (OIDC)
+        if: matrix.changed == 'true' || github.event.inputs.force_build_all == 'true'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push ${{ matrix.service }}
+        if: matrix.changed == 'true' || github.event.inputs.force_build_all == 'true'
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${{ matrix.service }}:${{ github.sha }}" \
+            --image "${{ matrix.service }}:prod" \
+            --file "${{ matrix.context }}/Dockerfile" \
+            "${{ matrix.context }}"
+
+      - name: Summary
+        if: matrix.changed == 'true' || github.event.inputs.force_build_all == 'true'
+        run: |
+          echo "### ${{ matrix.service }} built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Image tags pushed:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`$ACR_LOGIN_SERVER/${{ matrix.service }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`$ACR_LOGIN_SERVER/${{ matrix.service }}:prod\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To deploy, update the Container App revision to pull \`prod\` (or the SHA tag for pinning)." >> $GITHUB_STEP_SUMMARY
