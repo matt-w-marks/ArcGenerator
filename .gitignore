@@ -73,3 +73,12 @@ htmlcov/
 
 # Alembic
 # (keep migrations tracked -- do not ignore)
+
+# Database dumps / backups
+backups/
+db/backups/
+
+# Reporting handoff scratchpads
+REPORTING_HANDOFF*.md
+SECURITY_AUDIT*.md
+security_audit/

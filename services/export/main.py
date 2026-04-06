@@ -7,6 +7,7 @@ app = FastAPI(
     title="Export Service",
     docs_url=None,   # disable Swagger UI in production
     redoc_url=None,
+    redirect_slashes=False,
 )
 
 app.include_router(exports_router)

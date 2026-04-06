@@ -6,7 +6,7 @@ from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from routers import driving_sessions, financial_snapshots, job_activities, weekly_rollups
+from routers import audit, driving_sessions, expenses, financial_snapshots, fleet, income_entries, income_streams, job_activities, maintenance, platforms, reports, schedule, shift_log, weekly_rollups, zones
 
 
 @asynccontextmanager
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Metrics Service", lifespan=lifespan)
+app = FastAPI(title="Metrics Service", lifespan=lifespan, redirect_slashes=False)
 
 
 @app.exception_handler(Exception)
@@ -27,9 +27,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 app.include_router(driving_sessions.router)
+app.include_router(income_streams.router)
+app.include_router(income_entries.router)
 app.include_router(job_activities.router)
 app.include_router(financial_snapshots.router)
 app.include_router(weekly_rollups.router)
+app.include_router(zones.router)
+app.include_router(maintenance.router)
+app.include_router(platforms.router)
+app.include_router(audit.router)
+app.include_router(expenses.router)
+app.include_router(fleet.router)
+app.include_router(reports.router)
+app.include_router(schedule.router)
+app.include_router(shift_log.router)
 
 
 @app.get("/health")

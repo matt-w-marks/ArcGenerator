@@ -26,7 +26,7 @@ async function logEvent(level, message, context = null) {
   if (!p) return;
   try {
     await p.query(
-      'INSERT INTO factory_logs.flg_entries (app_label, level, message, context) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO flg_entries (app_label, level, message, context) VALUES ($1, $2, $3, $4)',
       ['auth', level.toUpperCase(), message, context ? JSON.stringify(context) : null]
     );
   } catch {

@@ -1,15 +1,24 @@
 import { useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Sidebar from './Sidebar';
 
 export default function DashboardLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="flex h-screen bg-obsidian-950 overflow-hidden">
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex flex-shrink-0">
-        <Sidebar />
+      <div className="hidden lg:flex flex-shrink-0 relative">
+        <Sidebar collapsed={collapsed} />
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className="absolute -right-3 top-6 z-10 w-6 h-6 rounded-full bg-obsidian-800 border border-obsidian-600 flex items-center justify-center text-ink-400 hover:text-ink-50 hover:bg-obsidian-700 transition-colors"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <PanelLeftOpen size={12} /> : <PanelLeftClose size={12} />}
+        </button>
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -36,11 +45,13 @@ export default function DashboardLayout({ children }) {
           >
             <Menu size={20} />
           </button>
-          <span className="font-display font-bold text-ink-50">RoadMap</span>
+          <span className="font-display font-bold text-ink-50">ArcGenerator</span>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6">
-          {children}
+          <div className="mx-auto w-full">
+            {children}
+          </div>
         </main>
       </div>
     </div>

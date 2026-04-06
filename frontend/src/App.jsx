@@ -3,9 +3,16 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import DrivingPage from './pages/DrivingPage';
-import JobsPage from './pages/JobsPage';
+import SchedulePage from './pages/SchedulePage';
+import ChecklistsPage from './pages/ChecklistsPage';
+import ZonesPage from './pages/ZonesPage';
+import RolesPage from './pages/RolesPage';
+import EngagementsPage from './pages/EngagementsPage';
 import FinancesPage from './pages/FinancesPage';
+import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
+import FleetPage from './pages/FleetPage';
+import InvitePage from './pages/InvitePage';
 
 function ProtectedRoutes() {
   const { isAuthenticated, loading } = useAuth();
@@ -29,6 +36,18 @@ function ProtectedRoutes() {
   );
 }
 
+function HomeRoute() {
+  const { user } = useAuth();
+  if (user?.role === 'VIEWER') return <Navigate to="/reports" replace />;
+  return <DashboardPage />;
+}
+
+function RoleGate({ allow, children }) {
+  const { user } = useAuth();
+  if (!allow.includes(user?.role)) return <Navigate to="/" replace />;
+  return children;
+}
+
 function PublicRoute() {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return null;
@@ -43,12 +62,19 @@ export default function App() {
         <Routes>
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/invite/:token" element={<InvitePage />} />
           </Route>
           <Route element={<ProtectedRoutes />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="/driving" element={<DrivingPage />} />
-            <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/finances" element={<FinancesPage />} />
+            <Route index element={<HomeRoute />} />
+            <Route path="/calendar" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><SchedulePage /></RoleGate>} />
+            <Route path="/checklists" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><ChecklistsPage /></RoleGate>} />
+            <Route path="/zones" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><ZonesPage /></RoleGate>} />
+            <Route path="/roles" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><RolesPage /></RoleGate>} />
+            <Route path="/engagements" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><EngagementsPage /></RoleGate>} />
+            <Route path="/finances" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><FinancesPage /></RoleGate>} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/fleet" element={<RoleGate allow={['ADMIN', 'OPERATOR']}><FleetPage /></RoleGate>} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

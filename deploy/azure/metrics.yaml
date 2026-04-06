@@ -2,26 +2,26 @@
 # Internal only — no external ingress. Only the gateway reaches this service.
 
 location: eastus
-name: ca-roadmap-metrics
+name: ca-arcgen-metrics
 type: Microsoft.App/containerApps
 
 properties:
-  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-arcgen-prod
 
   configuration:
     activeRevisionsMode: Single
 
     registries:
       - server: <acr-name>.azurecr.io
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     secrets:
       - name: metrics-database-url
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/metrics-database-url
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
       - name: logging-database-url
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/logging-database-url
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     ingress:
       external: false
@@ -31,7 +31,7 @@ properties:
   template:
     containers:
       - name: metrics
-        image: <acr-name>.azurecr.io/roadmap/metrics:1.0.0
+        image: <acr-name>.azurecr.io/arcgenerator/metrics:1.0.0
         resources:
           cpu: 0.5
           memory: 1Gi

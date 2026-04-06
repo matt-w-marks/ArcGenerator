@@ -2,7 +2,9 @@ const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
+const usersRoutes = require('./routes/users');
 const errorHandler = require('./middleware/errorHandler');
+const cloudflareAccess = require('./middleware/cloudflareAccess');
 
 const app = express();
 
@@ -11,7 +13,7 @@ app.use(express.json());
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
@@ -21,7 +23,9 @@ const authLimiter = rateLimit({
 if (!process.env.JEST_WORKER_ID) {
   app.use('/auth', authLimiter);
 }
+app.use(cloudflareAccess);
 app.use('/auth', authRoutes);
+app.use('/auth/users', usersRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'auth' });

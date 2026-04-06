@@ -1,32 +1,32 @@
 import datetime
-from datetime import date, datetime as dt
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobActivityCreate(BaseModel):
-    date: date
-    applications_submitted: int = Field(ge=0, default=0)
-    linkedin_connections: int = Field(ge=0, default=0)
-    recruiter_contacts: int = Field(ge=0, default=0)
+    company: str = Field(max_length=128)
+    role: str = Field(max_length=128)  # maps to role_title column
+    status: str = Field(default="applied", max_length=32)
+    applied_date: datetime.date | None = None
+    notes: str | None = Field(default=None, max_length=512)
 
 
 class JobActivityUpdate(BaseModel):
-    # Use datetime.date (qualified) to avoid field-name-shadows-type on Python 3.14
-    date: datetime.date | None = None
-    applications_submitted: int | None = Field(default=None, ge=0)
-    linkedin_connections: int | None = Field(default=None, ge=0)
-    recruiter_contacts: int | None = Field(default=None, ge=0)
+    company: str | None = Field(default=None, max_length=128)
+    role: str | None = Field(default=None, max_length=128)
+    status: str | None = Field(default=None, max_length=32)
+    applied_date: datetime.date | None = None
+    notes: str | None = Field(default=None, max_length=512)
 
 
 class JobActivityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    date: datetime.date
-    applications_submitted: int
-    linkedin_connections: int
-    recruiter_contacts: int
-    created_at: dt
-    updated_at: dt
+    company: str
+    role: str  # aliased from role_title
+    status: str
+    applied_date: datetime.date | None
+    notes: str | None
+    created_at: datetime.datetime

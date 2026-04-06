@@ -1,11 +1,12 @@
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const authenticate = require('./middleware/authenticate');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet());
@@ -21,8 +22,9 @@ app.use((_req, res, next) => {
   next();
 });
 
-// ── Global rate limit: 200 req / 15 min per IP ───────────────────────────────
-const globalLimiter = rateLimit({
+// ── Rate limiting ────────────────────────────────────────────────────────────
+// Unauthenticated: 200 req / 15 min (login brute force protection)
+const publicLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
@@ -30,10 +32,14 @@ const globalLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
 });
 
-// Skip rate limiting during test runs (jest sets JEST_WORKER_ID automatically)
-if (!process.env.JEST_WORKER_ID) {
-  app.use(globalLimiter);
-}
+// Authenticated: 1000 req / 15 min per IP (normal app usage)
+const authedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded. Please wait a moment.' },
+});
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -53,38 +59,72 @@ function injectUserHeaders(proxyReq, req) {
   }
 }
 
-// ── /auth — no authentication required (auth service handles its own flows) ──
-//
-// Auth service routes use /auth/* prefix, so we need to re-add it after
-// Express strips the mount prefix.
+// ── /auth/users — JWT required (admin user management) ───────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/auth/users', authedLimiter);
+}
+app.use(
+  '/auth/users',
+  authenticate,
+  createProxyMiddleware({
+    target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
+    changeOrigin: true,
+    pathRewrite: (path) => `/auth/users${path}`,
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
+  })
+);
+
+// ── /auth/profile — JWT required (self-service profile) ─────────────────────
+app.use(
+  '/auth/profile',
+  authenticate,
+  createProxyMiddleware({
+    target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
+    changeOrigin: true,
+    pathRewrite: (path) => `/auth/profile${path}`,
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
+  })
+);
+
+// ── /auth — public rate limit, no JWT ────────────────────────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/auth', publicLimiter);
+}
 app.use(
   '/auth',
   createProxyMiddleware({
     target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
     changeOrigin: true,
     pathRewrite: (path) => `/auth${path}`,
+    on: { proxyReq: fixRequestBody },
   })
 );
 
-// ── /metrics — JWT required ───────────────────────────────────────────────────
+// ── /metrics — authenticated rate limit, JWT required ────────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/metrics', authedLimiter);
+}
 app.use(
   '/metrics',
   authenticate,
   createProxyMiddleware({
     target: process.env.METRICS_SERVICE_URL || 'http://metrics:8000',
     changeOrigin: true,
-    on: { proxyReq: injectUserHeaders },
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
   })
 );
 
-// ── /export — JWT required ────────────────────────────────────────────────────
+// ── /export — authenticated rate limit, JWT required ─────────────────────────
+if (!process.env.JEST_WORKER_ID) {
+  app.use('/export', authedLimiter);
+}
 app.use(
   '/export',
   authenticate,
   createProxyMiddleware({
     target: process.env.EXPORT_SERVICE_URL || 'http://export:8001',
     changeOrigin: true,
-    on: { proxyReq: injectUserHeaders },
+    on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
   })
 );
 

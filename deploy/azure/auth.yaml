@@ -2,35 +2,35 @@
 # Internal only — no external ingress. Only the gateway reaches this service.
 
 location: eastus
-name: ca-roadmap-auth
+name: ca-arcgen-auth
 type: Microsoft.App/containerApps
 
 properties:
-  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-arcgen-prod
 
   configuration:
     activeRevisionsMode: Single
 
     registries:
       - server: <acr-name>.azurecr.io
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     secrets:
       - name: auth-database-url
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/auth-database-url
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
       - name: logging-database-url
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/logging-database-url
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
       - name: jwt-secret
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/jwt-secret
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
       - name: admin-email
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/admin-email
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
       - name: admin-password
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/admin-password
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     # Internal ingress only — not reachable from the internet
     ingress:
@@ -41,7 +41,7 @@ properties:
   template:
     containers:
       - name: auth
-        image: <acr-name>.azurecr.io/roadmap/auth:1.0.0
+        image: <acr-name>.azurecr.io/arcgenerator/auth:1.0.0
         resources:
           cpu: 0.25
           memory: 0.5Gi
