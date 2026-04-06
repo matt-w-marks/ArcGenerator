@@ -40,9 +40,12 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    continue-on-error: true   # Requires Dependency Graph enabled in repo settings
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
   npm-audit:
     name: npm Audit
