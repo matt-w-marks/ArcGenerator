@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Copy, Check, AlertCircle, Link2 } from 'lucide-react';
+import { Plus, Trash2, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api';
 
 const ROLES = ['ADMIN', 'OPERATOR', 'VIEWER'];
@@ -19,45 +19,35 @@ function RoleBadge({ role }) {
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
-  const [invites, setInvites] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [showInvite, setShowInvite] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  // Create user form
+  // Add user form
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('OPERATOR');
-
-  // Invite form
-  const [inviteRole, setInviteRole] = useState('OPERATOR');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [generatedLink, setGeneratedLink] = useState('');
-  const [copied, setCopied] = useState(false);
 
   async function loadUsers() {
     const r = await api.get('/auth/users');
     if (r.ok) setUsers(await r.json());
   }
 
-  async function loadInvites() {
-    const r = await api.get('/auth/users/invites');
-    if (r.ok) setInvites(await r.json());
-  }
-
-  useEffect(() => { loadUsers(); loadInvites(); }, []);
+  useEffect(() => { loadUsers(); }, []);
 
   async function handleCreate(e) {
     e.preventDefault();
     setError('');
-    const r = await api.post('/auth/users', { email: newEmail, password: newPassword, role: newRole });
+    setSuccess('');
+    const r = await api.post('/auth/users', { email: newEmail, role: newRole });
     if (r.ok) {
       setShowCreate(false);
-      setNewEmail(''); setNewPassword(''); setNewRole('OPERATOR');
+      setSuccess(`${newEmail} added. They can sign in via email OTP.`);
+      setNewEmail(''); setNewRole('OPERATOR');
       loadUsers();
+      setTimeout(() => setSuccess(''), 4000);
     } else {
       const body = await r.json().catch(() => ({}));
-      setError(body.error || 'Failed to create user');
+      setError(body.error || 'Failed to add user');
     }
   }
 
@@ -72,39 +62,16 @@ export default function UsersPage() {
     loadUsers();
   }
 
-  async function handleGenerateInvite(e) {
-    e.preventDefault();
-    setError('');
-    const r = await api.post('/auth/users/invites', { role: inviteRole, email: inviteEmail || undefined });
-    if (r.ok) {
-      const data = await r.json();
-      const link = `${window.location.origin}/invite/${data.token}`;
-      setGeneratedLink(link);
-      loadInvites();
-    } else {
-      const body = await r.json().catch(() => ({}));
-      setError(body.error || 'Failed to generate invite');
-    }
-  }
-
-  function copyLink() {
-    navigator.clipboard.writeText(generatedLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Users</h1>
-          <p className="text-xs text-ink-400 mt-0.5">Manage accounts and invite new users</p>
+          <p className="text-xs text-ink-400 mt-0.5">Add users — they sign in with email OTP via Cloudflare</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { setShowInvite(true); setShowCreate(false); setGeneratedLink(''); }}
-            className="btn-ghost text-xs gap-1.5"><Link2 size={12} /> Invite</button>
-          <button onClick={() => { setShowCreate(true); setShowInvite(false); }}
-            className="btn-primary text-xs gap-1.5"><Plus size={12} /> Create User</button>
+          <button onClick={() => setShowCreate(true)}
+            className="btn-primary text-xs gap-1.5"><Plus size={12} /> Add User</button>
         </div>
       </div>
 
@@ -113,11 +80,16 @@ export default function UsersPage() {
           <AlertCircle size={14} /> {error}
         </div>
       )}
+      {success && (
+        <div className="px-3 py-2 rounded-lg bg-success/10 border border-success/30 text-success text-sm">
+          {success}
+        </div>
+      )}
 
-      {/* Create user form */}
+      {/* Add user form */}
       {showCreate && (
         <div className="metal-card p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-ink-100">Create User</h3>
+          <h3 className="text-sm font-semibold text-ink-100">Add User</h3>
           <form onSubmit={handleCreate} className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
@@ -132,50 +104,14 @@ export default function UsersPage() {
                 </select>
               </div>
             </div>
-            <div>
-              <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Password</label>
-              <input type="password" required minLength={8} className="arc-input text-sm font-light" placeholder="Min 8 characters"
-                value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-            </div>
+            <p className="text-[10px] text-ink-500">
+              No password needed. They sign in by entering their email and the OTP code Cloudflare sends them.
+            </p>
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setShowCreate(false)} className="btn-ghost text-xs">Cancel</button>
-              <button type="submit" className="btn-primary text-xs">Create</button>
+              <button type="submit" className="btn-primary text-xs">Add</button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* Invite form */}
-      {showInvite && (
-        <div className="metal-card p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-ink-100">Generate Invite Link</h3>
-          <form onSubmit={handleGenerateInvite} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Role</label>
-                <select className="arc-input text-sm font-light" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Email (optional)</label>
-                <input type="email" className="arc-input text-sm font-light" placeholder="Pre-assign email"
-                  value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setShowInvite(false)} className="btn-ghost text-xs">Cancel</button>
-              <button type="submit" className="btn-primary text-xs">Generate</button>
-            </div>
-          </form>
-          {generatedLink && (
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-obsidian-800/60 border border-obsidian-700/50">
-              <input type="text" readOnly className="arc-input text-xs font-light font-mono flex-1" value={generatedLink} />
-              <button onClick={copyLink} className="btn-ghost text-xs gap-1">
-                {copied ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -205,25 +141,6 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Invites list */}
-      {invites.length > 0 && (
-        <div className="metal-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-obsidian-700">
-            <h2 className="text-sm font-semibold text-ink-100">Invites</h2>
-          </div>
-          <div className="divide-y divide-obsidian-700/30">
-            {invites.map((inv) => (
-              <div key={inv.id} className="flex items-center gap-3 px-4 py-2.5">
-                <RoleBadge role={inv.role} />
-                <span className="text-xs text-ink-300 truncate flex-1">{inv.email || 'Any email'}</span>
-                <span className="text-[10px] text-ink-500 font-mono">
-                  {inv.used_at ? 'Used' : new Date(inv.expires_at) < new Date() ? 'Expired' : `Expires ${new Date(inv.expires_at).toLocaleDateString()}`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

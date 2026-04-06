@@ -15,14 +15,13 @@ from audit import audit, diff, get_user_id
 from database import get_db
 from role_guard import require_role
 from models import (
-    CalendarEntry, DailyBlockLog, DailyExpense, DailyPlatformEarning,
+    CalendarEntry, DailyBlockLog, DailyPlatformEarning, BusinessExpense,
     JobActivity, MaintenanceRecord, Platform, Schedule, ScheduleBlock,
     SystemConfig, Zone,
 )
 
 # Shorthand for active-only filters
 _log_active = lambda q: q.filter(DailyBlockLog.deleted_at.is_(None))
-_exp_active = lambda q: q.filter(DailyExpense.deleted_at.is_(None))
 _pe_active = lambda q: q.filter(DailyPlatformEarning.deleted_at.is_(None))
 
 router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
@@ -119,11 +118,11 @@ class FinancialHealthResponse(BaseModel):
 
 class JobSearchResponse(BaseModel):
     total_applications: int
-    total_recruiter_contacts: int
-    total_linkedin: int
+    total_recruiter_contacts: int = 0
+    total_linkedin: int = 0
     this_week_applications: int
-    this_week_recruiter: int
-    this_week_linkedin: int
+    this_week_recruiter: int = 0
+    this_week_linkedin: int = 0
 
 class TaxSummaryResponse(BaseModel):
     year: int
@@ -144,6 +143,14 @@ class TaxSummaryResponse(BaseModel):
 def _monday_of_week(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
+def _add_months_helper(d: date, months: int) -> date:
+    from calendar import monthrange
+    m = d.month - 1 + months
+    y = d.year + m // 12
+    m = m % 12 + 1
+    day = min(d.day, monthrange(y, m)[1])
+    return date(y, m, day)
+
 def _safe_div(num: float, den: float) -> float:
     return round(num / den, 2) if den > 0 else 0.0
 
@@ -157,20 +164,16 @@ def _summary(db: Session, from_date: date, to_date: date) -> SummaryResponse:
         .all()
     )
     log_ids = [l.id for l in logs]
-    daily_exp = float(
-        db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-        .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None))
-        .scalar()
-    ) if log_ids else 0
 
-    # Business expenses (standalone)
+    # All expenses (shift + standalone) are in business_expenses
     from models import BusinessExpense
-    biz_exp = float(
-        db.query(sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
+    expenses = float(
+        db.query(sqf.coalesce(sqf.sum(
+            case((BusinessExpense.is_credit.is_(True), -BusinessExpense.amount), else_=BusinessExpense.amount)
+        ), 0))
         .filter(BusinessExpense.date >= from_date, BusinessExpense.date <= to_date, BusinessExpense.deleted_at.is_(None))
         .scalar()
     )
-    expenses = daily_exp + biz_exp
 
     # Planned gross from template blocks for assigned days
     planned = (
@@ -235,13 +238,13 @@ def _by_day(db: Session, from_date: date, to_date: date) -> list[DayRow]:
 
         log_ids = [l.id for l in logs]
         exp_total = float(
-            db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-            .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None))
+            db.query(sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
+            .filter(BusinessExpense.daily_block_log_id.in_(log_ids), BusinessExpense.deleted_at.is_(None))
             .scalar()
         )
         gas_total = float(
-            db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-            .filter(DailyExpense.daily_block_log_id.in_(log_ids), DailyExpense.deleted_at.is_(None), DailyExpense.category == "gas")
+            db.query(sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
+            .filter(BusinessExpense.daily_block_log_id.in_(log_ids), BusinessExpense.deleted_at.is_(None), BusinessExpense.budget_category == "fuel")
             .scalar()
         )
 
@@ -357,25 +360,11 @@ def report_by_platform(db: Session = Depends(get_db), from_date: date = Query(..
 # ── 5. Expenses ────────────────────────────────────────────────────────────────
 
 def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
-    # Daily (shift-level) expenses
-    daily_results = (
-        db.query(
-            DailyExpense.category,
-            sqf.sum(DailyExpense.amount).label("total"),
-            sqf.count(DailyExpense.id).label("count"),
-        )
-        .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None), DailyExpense.deleted_at.is_(None))
-        .group_by(DailyExpense.category)
-        .all()
-    )
-
-    # Business (standalone) expenses
-    from models import BusinessExpense
+    # All expenses (shift + standalone) in one table
     biz_results = (
         db.query(
             BusinessExpense.budget_category,
-            sqf.sum(BusinessExpense.amount).label("total"),
+            sqf.sum(case((BusinessExpense.is_credit.is_(True), -BusinessExpense.amount), else_=BusinessExpense.amount)).label("total"),
             sqf.count(BusinessExpense.id).label("count"),
         )
         .filter(BusinessExpense.date >= from_date, BusinessExpense.date <= to_date, BusinessExpense.deleted_at.is_(None))
@@ -383,12 +372,7 @@ def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
         .all()
     )
 
-    # Combine into unified category map
     cat_map = {}
-    for r in daily_results:
-        cat_map[r.category] = cat_map.get(r.category, {"total": 0, "count": 0})
-        cat_map[r.category]["total"] += float(r.total)
-        cat_map[r.category]["count"] += r.count
     for r in biz_results:
         cat_map[r.budget_category] = cat_map.get(r.budget_category, {"total": 0, "count": 0})
         cat_map[r.budget_category]["total"] += float(r.total)
@@ -400,7 +384,7 @@ def _expenses(db: Session, from_date: date, to_date: date) -> ExpensesResponse:
         .filter(DailyBlockLog.entry_date >= from_date, DailyBlockLog.entry_date <= to_date, DailyBlockLog.deleted_at.is_(None))
         .scalar()
     )
-    gas = cat_map.get("gas", {}).get("total", 0) + cat_map.get("fuel", {}).get("total", 0)
+    gas = cat_map.get("fuel", {}).get("total", 0)
 
     return ExpensesResponse(
         from_date=from_date, to_date=to_date,
@@ -429,8 +413,8 @@ def _weekly(db: Session) -> WeeklyResponse:
     )
     log_ids = [l.id for l in logs]
     exp = float(
-        db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-        .filter(DailyExpense.daily_block_log_id.in_(log_ids))
+        db.query(sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
+        .filter(BusinessExpense.daily_block_log_id.in_(log_ids))
         .scalar()
     ) if log_ids else 0
 
@@ -485,9 +469,42 @@ def _financial_health(db: Session) -> FinancialHealthResponse:
     monthly_nut = get_projected_monthly_cost(db)
     weekly_cost = get_projected_weekly_vehicle_cost(db)
 
-    bankroll = float(config.bankroll_remaining)
-    daily_burn = monthly_nut / 30 if monthly_nut > 0 else 0
-    runway = bankroll / daily_burn if daily_burn > 0 else 999
+    # Effective bankroll = config bankroll - real expenses up to today + gross earned up to today
+    from models import BusinessExpense
+    month_start = date(today.year, today.month, 1)
+
+    month_expenses = float(
+        db.query(sqf.coalesce(sqf.sum(
+            case((BusinessExpense.is_credit.is_(True), -BusinessExpense.amount), else_=BusinessExpense.amount)
+        ), 0))
+        .filter(BusinessExpense.date >= month_start, BusinessExpense.date <= today, BusinessExpense.deleted_at.is_(None))
+        .scalar()
+    )
+    month_gross = float(
+        db.query(sqf.coalesce(sqf.sum(DailyBlockLog.actual_gross), 0))
+        .filter(DailyBlockLog.entry_date >= month_start, DailyBlockLog.entry_date <= today, DailyBlockLog.deleted_at.is_(None))
+        .scalar()
+    )
+
+    bankroll = float(config.bankroll_remaining) - month_expenses + month_gross
+
+    # Runway: subtract remaining unpaid expenses this month, then count full months after
+    from calendar import monthrange
+    remaining_month_exp = float(
+        db.query(sqf.coalesce(sqf.sum(
+            case((BusinessExpense.is_credit.is_(True), -BusinessExpense.amount), else_=BusinessExpense.amount)
+        ), 0))
+        .filter(BusinessExpense.date > today, BusinessExpense.date <= date(today.year, today.month, monthrange(today.year, today.month)[1]),
+                BusinessExpense.deleted_at.is_(None))
+        .scalar()
+    )
+    after_this_month = bankroll - remaining_month_exp
+    days_left_in_month = monthrange(today.year, today.month)[1] - today.day
+    if monthly_nut > 0:
+        full_months_after = after_this_month / monthly_nut if after_this_month > 0 else 0
+        runway = days_left_in_month + (full_months_after * 30)
+    else:
+        runway = 999
 
     se_rate = float(config.se_tax_rate)
     se_accrued = round(ytd_gross * se_rate, 2)
@@ -499,10 +516,9 @@ def _financial_health(db: Session) -> FinancialHealthResponse:
     mon = _monday_of_week(today)
     sun = mon + timedelta(days=6)
     weekly_gas = float(
-        db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-        .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= mon, DailyBlockLog.entry_date <= sun, DailyBlockLog.deleted_at.is_(None))
-        .filter(DailyExpense.category == "gas")
+        db.query(sqf.coalesce(sqf.sum(BusinessExpense.amount), 0))
+        .filter(BusinessExpense.date >= mon, BusinessExpense.date <= sun, BusinessExpense.deleted_at.is_(None))
+        .filter(BusinessExpense.budget_category == "fuel")
         .scalar()
     )
     weekly_hours = float(
@@ -543,16 +559,14 @@ def _job_search(db: Session) -> JobSearchResponse:
     mon = _monday_of_week(today)
     sun = mon + timedelta(days=6)
 
-    all_jobs = db.query(JobActivity).all()
-    week_jobs = [j for j in all_jobs if mon <= j.date <= sun]
+    total = db.query(JobActivity).count()
+    week_total = db.query(JobActivity).filter(
+        JobActivity.applied_date >= mon, JobActivity.applied_date <= sun
+    ).count()
 
     return JobSearchResponse(
-        total_applications=sum(j.applications_submitted for j in all_jobs),
-        total_recruiter_contacts=sum(j.recruiter_contacts for j in all_jobs),
-        total_linkedin=sum(j.linkedin_connections for j in all_jobs),
-        this_week_applications=sum(j.applications_submitted for j in week_jobs),
-        this_week_recruiter=sum(j.recruiter_contacts for j in week_jobs),
-        this_week_linkedin=sum(j.linkedin_connections for j in week_jobs),
+        total_applications=total,
+        this_week_applications=week_total,
     )
 
 
@@ -582,9 +596,10 @@ def _tax_summary(db: Session, year: int | None = None) -> TaxSummaryResponse:
         .scalar()
     )
     ytd_expenses = float(
-        db.query(sqf.coalesce(sqf.sum(DailyExpense.amount), 0))
-        .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= year_start, DailyBlockLog.entry_date <= year_end, DailyBlockLog.deleted_at.is_(None))
+        db.query(sqf.coalesce(sqf.sum(
+            case((BusinessExpense.is_credit.is_(True), -BusinessExpense.amount), else_=BusinessExpense.amount)
+        ), 0))
+        .filter(BusinessExpense.date >= year_start, BusinessExpense.date <= year_end, BusinessExpense.deleted_at.is_(None))
         .scalar()
     )
     maint_total = float(

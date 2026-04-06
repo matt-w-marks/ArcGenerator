@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Map, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +8,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  function fmt(s) {
+    const m = Math.floor(s / 60);
+    const ss = String(s % 60).padStart(2, '0');
+    return `${m}:${ss}`;
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -16,6 +29,9 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err) {
+      if (err.status === 429 && err.retryAfter) {
+        setCooldown(err.retryAfter);
+      }
       setError(err.message || 'Login failed');
     } finally {
       setLoading(false);
@@ -41,7 +57,10 @@ export default function LoginPage() {
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-error/10 border border-error/30 text-error text-sm mb-4">
               <AlertCircle size={14} className="flex-shrink-0" />
-              {error}
+              <span>
+                {error}
+                {cooldown > 0 && <> — try again in {fmt(cooldown)}</>}
+              </span>
             </div>
           )}
 
@@ -76,12 +95,17 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || cooldown > 0}
               className="btn-primary w-full mt-2"
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+
+          <p className="text-[10px] text-ink-500 mt-4 text-center leading-relaxed">
+            Normally you'll be signed in automatically via Cloudflare email OTP.
+            Use this form only if you have a local password set as a fallback.
+          </p>
         </div>
       </div>
     </div>

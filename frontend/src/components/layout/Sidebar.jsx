@@ -1,43 +1,58 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Car,
-  Briefcase,
+  MapPin,
+  Building2,
+  Handshake,
   DollarSign,
   Settings,
   LogOut,
   ChevronRight,
   Map,
   CalendarDays,
+  ClipboardCheck,
   BarChart3,
   Truck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
-// roles: which roles can see this nav item. If omitted, all roles can see it.
+// roles: which roles can see this nav item. If omitted, ADMIN+OPERATOR only by default.
 const NAV_SECTIONS = [
   {
     label: null,
     items: [
-      { to: '/', label: 'Shift Log', icon: LayoutDashboard, end: true },
-      { to: '/schedule', label: 'Schedule', icon: CalendarDays, roles: ['ADMIN', 'OPERATOR'] },
-      { to: '/reports', label: 'Reports', icon: BarChart3 },
+      { to: '/', label: 'Daily Log', icon: LayoutDashboard, end: true, roles: ['ADMIN', 'OPERATOR'] },
+      { to: '/calendar', label: 'Calendar', icon: CalendarDays, roles: ['ADMIN', 'OPERATOR'] },
+      { to: '/checklists', label: 'Checklists', icon: ClipboardCheck, roles: ['ADMIN', 'OPERATOR'] },
     ],
   },
   {
-    label: 'Revenue',
+    label: 'Ventures',
     roles: ['ADMIN', 'OPERATOR'],
     items: [
-      { to: '/driving', label: 'Driving', icon: Car },
-      { to: '/jobs',    label: 'Contract Work', icon: Briefcase },
+      { to: '/zones', label: 'Zones', icon: MapPin },
+    ],
+  },
+  {
+    label: 'Roles',
+    roles: ['ADMIN', 'OPERATOR'],
+    items: [
+      { to: '/roles', label: 'Positions', icon: Building2 },
+    ],
+  },
+  {
+    label: 'Engagements',
+    roles: ['ADMIN', 'OPERATOR'],
+    items: [
+      { to: '/engagements', label: 'Clients', icon: Handshake },
     ],
   },
   {
     label: 'Financial',
-    roles: ['ADMIN', 'OPERATOR'],
     items: [
-      { to: '/finances', label: 'Finances', icon: DollarSign },
+      { to: '/finances', label: 'Finances', icon: DollarSign, roles: ['ADMIN', 'OPERATOR'] },
+      { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['ADMIN', 'OPERATOR', 'VIEWER'] },
     ],
   },
   {
@@ -153,8 +168,13 @@ export default function Sidebar({ onClose, collapsed = false }) {
 
         {!collapsed && (
           <div className="mt-2 px-3 py-2">
-            <p className="text-xs text-ink-300 truncate">{user?.sub ?? 'User'}</p>
-            <p className="section-label">{user?.role ?? ''}</p>
+            <p className="text-xs text-ink-100 truncate">
+              {user?.first_name || user?.last_name
+                ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+                : 'User'}
+            </p>
+            <p className="text-[10px] text-ink-400 truncate">{user?.email || ''}</p>
+            <p className="text-[9px] text-ink-500 uppercase tracking-wide">{user?.role ?? ''}</p>
           </div>
         )}
 

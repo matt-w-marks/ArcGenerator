@@ -7,11 +7,11 @@
 # No secret values appear in this file.
 
 location: eastus
-name: ca-roadmap-gateway
+name: ca-arcgen-gateway
 type: Microsoft.App/containerApps
 
 properties:
-  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-arcgen-prod
 
   configuration:
     activeRevisionsMode: Single
@@ -19,13 +19,13 @@ properties:
     # ACR access via managed identity — no registry credentials in manifests
     registries:
       - server: <acr-name>.azurecr.io
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     # Secrets resolved from Key Vault at deploy time
     secrets:
       - name: jwt-secret
         keyVaultUrl: https://<keyvault-name>.vault.azure.net/secrets/jwt-secret
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     # Gateway is the only externally-facing service (besides frontend)
     ingress:
@@ -40,7 +40,7 @@ properties:
   template:
     containers:
       - name: gateway
-        image: <acr-name>.azurecr.io/roadmap/gateway:1.0.0
+        image: <acr-name>.azurecr.io/arcgenerator/gateway:1.0.0
         resources:
           cpu: 0.5
           memory: 1Gi
@@ -53,11 +53,11 @@ properties:
             secretRef: jwt-secret
           # Internal Container Apps service discovery FQDNs
           - name: AUTH_SERVICE_URL
-            value: https://ca-roadmap-auth.internal.<aca-env-default-domain>
+            value: https://ca-arcgen-auth.internal.<aca-env-default-domain>
           - name: METRICS_SERVICE_URL
-            value: https://ca-roadmap-metrics.internal.<aca-env-default-domain>
+            value: https://ca-arcgen-metrics.internal.<aca-env-default-domain>
           - name: EXPORT_SERVICE_URL
-            value: https://ca-roadmap-export.internal.<aca-env-default-domain>
+            value: https://ca-arcgen-export.internal.<aca-env-default-domain>
         probes:
           - type: Liveness
             httpGet:

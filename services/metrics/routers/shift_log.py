@@ -1,7 +1,7 @@
-"""Shift log router — daily ops logging via daily_block_logs.
+"""Daily log router — universal daily ops logging via daily_block_logs.
 
-All actual/logged data lives in daily_block_logs, keyed by (block_id, entry_date).
-schedule_blocks remain pure templates (planned data only).
+Supports both scheduled blocks (from calendar) and ad-hoc blocks.
+All actual/logged data lives in daily_block_logs.
 Soft delete: deleted_at populated instead of row removal.
 All mutations audit-logged.
 """
@@ -18,7 +18,8 @@ from database import get_db
 from role_guard import require_role
 from models import (
     CalendarEntry, Schedule, ScheduleBlock, Platform,
-    DailyBlockLog, DailyExpense, DailyPlatformEarning,
+    DailyBlockLog, BusinessExpense, DailyPlatformEarning,
+    IncomeEntry, IncomeStream, Checklist, ChecklistItem, ChecklistLog,
 )
 
 router = APIRouter(prefix="/shift-log", tags=["shift-log"])
@@ -27,17 +28,18 @@ router = APIRouter(prefix="/shift-log", tags=["shift-log"])
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class ExpenseResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     id: UUID
-    daily_block_log_id: UUID
-    category: str
+    daily_block_log_id: UUID | None
+    budget_category: str
     amount: float
+    vendor: str | None = None
     description: str | None = None
 
 class ExpenseCreate(BaseModel):
     entry_date: date
-    category: str = Field(pattern="^(gas|tolls|parking|car_wash|food|other)$")
+    budget_category: str = Field(max_length=32)
     amount: float = Field(ge=0)
+    vendor: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=256)
 
 class PlatformEarningResponse(BaseModel):
@@ -89,28 +91,58 @@ class DailyLogResponse(BaseModel):
     expenses: list[ExpenseResponse] = []
     platform_earnings: list[PlatformEarningResponse] = []
 
+class ChecklistItemBrief(BaseModel):
+    id: UUID
+    label: str
+    sort_order: int
+
+class ChecklistLogBrief(BaseModel):
+    id: UUID
+    log_date: date
+    checked_ids: list[UUID]
+    notes: str | None = None
+
 class BlockLogResponse(BaseModel):
     id: UUID
-    schedule_id: UUID
+    schedule_id: UUID | None = None
     hour_start: float
     hour_end: float
     block_type: str
     label: str
-    notes: str | None
-    zone_id: UUID | None
-    zone_name: str | None
-    sort_order: int
-    gross_revenue: float
+    notes: str | None = None
+    zone_id: UUID | None = None
+    zone_name: str | None = None
+    income_stream_id: UUID | None = None
+    income_stream_name: str | None = None
+    checklist_id: UUID | None = None
+    checklist_name: str | None = None
+    checklist_type: str | None = None
+    checklist_allow_photos: bool = False
+    checklist_items: list[ChecklistItemBrief] = []
+    checklist_log_today: ChecklistLogBrief | None = None
+    sort_order: int = 0
+    gross_revenue: float = 0
     platform_ids: list[UUID] = []
     platform_names: list[str] = []
     platform_colors: list[str] = []
+    source: str = "schedule"  # "schedule" or "adhoc"
     daily_log: DailyLogResponse | None = None
+
+class AdHocBlockCreate(BaseModel):
+    entry_date: date
+    block_type: str = Field(max_length=16)
+    label: str = Field(max_length=128)
+    income_stream_id: UUID | None = None
+    checklist_id: UUID | None = None
+    hour_start: float = Field(ge=0, le=25.5)
+    hour_end: float = Field(ge=0.5, le=26)
 
 class DayLogResponse(BaseModel):
     date: str
-    schedule_id: UUID
-    schedule_name: str
-    schedule_color: str
+    has_schedule: bool = False
+    schedule_id: UUID | None = None
+    schedule_name: str | None = None
+    schedule_color: str | None = None
     schedule_description: str | None = None
     blocks: list[BlockLogResponse] = []
 
@@ -161,7 +193,7 @@ def _get_or_create_daily_log(db: Session, block_id: UUID, entry_date: date) -> t
         return log, True
     return log, False
 
-def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogResponse:
+def _build_daily_log_response(log: DailyBlockLog, pmap: dict, db: Session = None) -> DailyLogResponse:
     pe_list = []
     for pe in (log.platform_earnings or []):
         if pe.deleted_at is not None:
@@ -177,7 +209,13 @@ def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogRespons
             trip_count=pe.trip_count,
         ))
 
-    active_expenses = [e for e in (log.expenses or []) if e.deleted_at is None]
+    # Query expenses linked to this block log from business_expenses
+    from models import BusinessExpense as BE
+    active_expenses = (
+        db.query(BE)
+        .filter(BE.daily_block_log_id == log.id, BE.deleted_at.is_(None))
+        .all()
+    )
 
     return DailyLogResponse(
         id=log.id,
@@ -194,13 +232,41 @@ def _build_daily_log_response(log: DailyBlockLog, pmap: dict) -> DailyLogRespons
         active_hours=float(log.active_hours) if log.active_hours is not None else None,
         log_notes=log.log_notes,
         vehicle_id=log.vehicle_id,
-        expenses=[ExpenseResponse.model_validate(e) for e in active_expenses],
+        expenses=[ExpenseResponse(
+            id=e.id, daily_block_log_id=e.daily_block_log_id,
+            budget_category=e.budget_category, amount=float(e.amount),
+            vendor=e.vendor, description=e.description,
+        ) for e in active_expenses],
         platform_earnings=pe_list,
     )
 
-def _build_block_response(block: ScheduleBlock, pmap: dict, daily_log: DailyBlockLog | None) -> BlockLogResponse:
+def _load_checklist_data(db: Session, checklist_id: UUID, entry_date: date) -> dict:
+    """Load checklist items + most recent log for the date."""
+    cl = db.get(Checklist, checklist_id)
+    if not cl:
+        return {}
+    items = db.query(ChecklistItem).filter(
+        ChecklistItem.checklist_id == checklist_id, ChecklistItem.active.is_(True)
+    ).order_by(ChecklistItem.sort_order).all()
+    log = db.query(ChecklistLog).filter(
+        ChecklistLog.checklist_id == checklist_id, ChecklistLog.log_date == entry_date
+    ).order_by(ChecklistLog.completed_at.desc()).first()
+    return {
+        "name": cl.name,
+        "type": cl.checklist_type,
+        "allow_photos": cl.allow_photos,
+        "items": [ChecklistItemBrief(id=i.id, label=i.label, sort_order=i.sort_order) for i in items],
+        "log": ChecklistLogBrief(id=log.id, log_date=log.log_date, checked_ids=log.checked_ids or [], notes=log.notes) if log else None,
+    }
+
+
+def _build_block_response(block: ScheduleBlock, pmap: dict, daily_log: DailyBlockLog | None, db: Session = None, entry_date: date = None) -> BlockLogResponse:
     ids = block.platform_ids or []
     plats = [pmap[pid] for pid in ids if pid in pmap]
+
+    cl_data = {}
+    if block.checklist_id and db and entry_date:
+        cl_data = _load_checklist_data(db, block.checklist_id, entry_date)
 
     return BlockLogResponse(
         id=block.id,
@@ -212,12 +278,48 @@ def _build_block_response(block: ScheduleBlock, pmap: dict, daily_log: DailyBloc
         notes=block.notes,
         zone_id=block.zone_id,
         zone_name=block.zone_name,
+        income_stream_id=block.income_stream_id,
+        checklist_id=block.checklist_id,
+        checklist_name=cl_data.get("name"),
+        checklist_type=cl_data.get("type"),
+        checklist_allow_photos=cl_data.get("allow_photos", False),
+        checklist_items=cl_data.get("items", []),
+        checklist_log_today=cl_data.get("log"),
         sort_order=block.sort_order,
         gross_revenue=float(block.gross_revenue),
         platform_ids=[p.id for p in plats],
         platform_names=[p.name for p in plats],
         platform_colors=[p.color or "#6b7280" for p in plats],
-        daily_log=_build_daily_log_response(daily_log, pmap) if daily_log else None,
+        source="schedule",
+        daily_log=_build_daily_log_response(daily_log, pmap, db) if daily_log else None,
+    )
+
+def _build_adhoc_response(log: DailyBlockLog, pmap: dict, db: Session) -> BlockLogResponse:
+    """Build response for an ad-hoc block (no schedule_block)."""
+    stream_name = None
+    if log.income_stream_id:
+        stream = db.get(IncomeStream, log.income_stream_id)
+        if stream:
+            stream_name = stream.name
+    cl_data = {}
+    if log.checklist_id:
+        cl_data = _load_checklist_data(db, log.checklist_id, log.entry_date)
+    return BlockLogResponse(
+        id=log.id,
+        hour_start=float(log.hour_start or 0),
+        hour_end=float(log.hour_end or 0),
+        block_type=log.block_type or "note",
+        label=log.label or "Ad-hoc",
+        income_stream_id=log.income_stream_id,
+        income_stream_name=stream_name,
+        checklist_id=log.checklist_id,
+        checklist_name=cl_data.get("name"),
+        checklist_type=cl_data.get("type"),
+        checklist_allow_photos=cl_data.get("allow_photos", False),
+        checklist_items=cl_data.get("items", []),
+        checklist_log_today=cl_data.get("log"),
+        source="adhoc",
+        daily_log=_build_daily_log_response(log, pmap, db),
     )
 
 def _load_day(db: Session, entry_date: date) -> DayLogResponse:
@@ -227,52 +329,72 @@ def _load_day(db: Session, entry_date: date) -> DayLogResponse:
         .filter(CalendarEntry.entry_date == entry_date)
         .first()
     )
-    if entry is None:
-        raise HTTPException(status_code=404, detail="No schedule assigned to that date")
 
-    sched = entry.schedule
-    blocks = (
-        db.query(ScheduleBlock)
-        .options(joinedload(ScheduleBlock.zone_rel))
-        .filter(ScheduleBlock.schedule_id == sched.id)
-        .order_by(ScheduleBlock.hour_start)
-        .all()
-    )
+    sched = entry.schedule if entry else None
+    block_responses = []
 
-    block_ids = [b.id for b in blocks]
-    daily_logs = (
-        db.query(DailyBlockLog)
-        .options(
-            joinedload(DailyBlockLog.expenses),
-            joinedload(DailyBlockLog.platform_earnings),
+    # Load scheduled blocks if a schedule is assigned
+    if sched:
+        blocks = (
+            db.query(ScheduleBlock)
+            .options(joinedload(ScheduleBlock.zone_rel))
+            .filter(ScheduleBlock.schedule_id == sched.id)
+            .order_by(ScheduleBlock.hour_start)
+            .all()
         )
+        block_ids = [b.id for b in blocks]
+        daily_logs = (
+            db.query(DailyBlockLog)
+            .options(joinedload(DailyBlockLog.platform_earnings))
+            .filter(
+                DailyBlockLog.block_id.in_(block_ids),
+                DailyBlockLog.entry_date == entry_date,
+                DailyBlockLog.deleted_at.is_(None),
+            )
+            .all()
+        ) if block_ids else []
+        log_map = {dl.block_id: dl for dl in daily_logs}
+
+        all_pids = set()
+        for b in blocks:
+            all_pids.update(b.platform_ids or [])
+        for dl in daily_logs:
+            for pe in (dl.platform_earnings or []):
+                if pe.deleted_at is None:
+                    all_pids.add(pe.platform_id)
+        pmap = {p.id: p for p in db.query(Platform).filter(Platform.id.in_(all_pids)).all()} if all_pids else {}
+
+        block_responses = [_build_block_response(b, pmap, log_map.get(b.id), db, entry_date) for b in blocks]
+
+    # Load ad-hoc blocks for this date (block_id is null)
+    adhoc_logs = (
+        db.query(DailyBlockLog)
+        .options(joinedload(DailyBlockLog.platform_earnings))
         .filter(
-            DailyBlockLog.block_id.in_(block_ids),
+            DailyBlockLog.block_id.is_(None),
             DailyBlockLog.entry_date == entry_date,
             DailyBlockLog.deleted_at.is_(None),
         )
+        .order_by(DailyBlockLog.hour_start)
         .all()
-    ) if block_ids else []
-    log_map = {dl.block_id: dl for dl in daily_logs}
-
-    all_pids = set()
-    for b in blocks:
-        all_pids.update(b.platform_ids or [])
-    for dl in daily_logs:
-        for pe in (dl.platform_earnings or []):
-            if pe.deleted_at is None:
-                all_pids.add(pe.platform_id)
-    pmap = {}
-    if all_pids:
-        pmap = {p.id: p for p in db.query(Platform).filter(Platform.id.in_(all_pids)).all()}
+    )
+    if adhoc_logs:
+        adhoc_pids = set()
+        for dl in adhoc_logs:
+            for pe in (dl.platform_earnings or []):
+                if pe.deleted_at is None:
+                    adhoc_pids.add(pe.platform_id)
+        adhoc_pmap = {p.id: p for p in db.query(Platform).filter(Platform.id.in_(adhoc_pids)).all()} if adhoc_pids else {}
+        block_responses.extend([_build_adhoc_response(dl, adhoc_pmap, db) for dl in adhoc_logs])
 
     return DayLogResponse(
         date=str(entry_date),
-        schedule_id=sched.id,
-        schedule_name=sched.name,
-        schedule_color=sched.color,
-        schedule_description=sched.description,
-        blocks=[_build_block_response(b, pmap, log_map.get(b.id)) for b in blocks],
+        has_schedule=sched is not None,
+        schedule_id=sched.id if sched else None,
+        schedule_name=sched.name if sched else None,
+        schedule_color=sched.color if sched else None,
+        schedule_description=sched.description if sched else None,
+        blocks=block_responses,
     )
 
 def _reload_log(db: Session, log_id: UUID) -> tuple[DailyBlockLog, dict]:
@@ -293,21 +415,75 @@ def _reload_log(db: Session, log_id: UUID) -> tuple[DailyBlockLog, dict]:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.get("/today", response_model=DayLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("/today", response_model=DayLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def get_today(db: Session = Depends(get_db)):
     return _load_day(db, date.today())
 
-@router.get("/{entry_date}", response_model=DayLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("/{entry_date}", response_model=DayLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def get_day(entry_date: date, db: Session = Depends(get_db)):
     return _load_day(db, entry_date)
 
+@router.post("/blocks", response_model=BlockLogResponse, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
+def create_adhoc_block(body: AdHocBlockCreate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    """Create an ad-hoc block not tied to any schedule."""
+    log = DailyBlockLog(
+        entry_date=body.entry_date,
+        block_type=body.block_type,
+        label=body.label,
+        income_stream_id=body.income_stream_id,
+        checklist_id=body.checklist_id,
+        hour_start=body.hour_start,
+        hour_end=body.hour_end,
+    )
+    db.add(log)
+    db.flush()
+    audit(db, "daily_block_logs", log.id, "CREATE", user_id, snapshot({
+        "block_type": body.block_type, "label": body.label, "entry_date": str(body.entry_date),
+    }))
+    db.commit()
+    db.refresh(log)
+    return _build_adhoc_response(log, {}, db)
+
+
+def _upsert_income_entry(db: Session, log: DailyBlockLog, block_type: str, income_stream_id: UUID | None):
+    """Auto-create/update income entry for role/engagement blocks."""
+    if block_type not in ('role', 'engagement') or not income_stream_id:
+        return
+    existing = (
+        db.query(IncomeEntry)
+        .filter(IncomeEntry.income_stream_id == income_stream_id,
+                IncomeEntry.entry_date == log.entry_date,
+                IncomeEntry.deleted_at.is_(None))
+        .first()
+    )
+    hours = float(log.active_hours) if log.active_hours else None
+    amount = float(log.actual_gross) if log.actual_gross else None
+    if existing:
+        existing.hours = hours
+        existing.amount = amount
+    else:
+        db.add(IncomeEntry(
+            income_stream_id=income_stream_id, entry_date=log.entry_date,
+            hours=hours, amount=amount,
+        ))
+
+
 @router.put("/blocks/{block_id}", response_model=DailyLogResponse, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    # Try as schedule block first, then as ad-hoc log
     block = db.get(ScheduleBlock, block_id)
+    adhoc_log = None
     if block is None:
-        raise HTTPException(status_code=404, detail="Block not found")
+        adhoc_log = db.get(DailyBlockLog, block_id)
+        if adhoc_log is None or adhoc_log.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="Block not found")
 
-    log, is_new = _get_or_create_daily_log(db, block_id, body.entry_date)
+    if block:
+        log, is_new = _get_or_create_daily_log(db, block_id, body.entry_date)
+    else:
+        log = adhoc_log
+        is_new = False
+
     old_state = _log_snapshot(log) if not is_new else {}
 
     data = body.model_dump(exclude={"entry_date"}, exclude_none=True)
@@ -338,10 +514,15 @@ def update_block_log(block_id: UUID, body: BlockLogUpdate, db: Session = Depends
         if changes:
             audit(db, "daily_block_logs", log.id, "UPDATE", user_id, changes)
 
+    # Auto-create income entry for role/engagement blocks
+    bt = (block.block_type if block else log.block_type) or ""
+    stream_id = (block.income_stream_id if block else log.income_stream_id)
+    _upsert_income_entry(db, log, bt, stream_id)
+
     db.commit()
 
     log, pmap = _reload_log(db, log.id)
-    return _build_daily_log_response(log, pmap)
+    return _build_daily_log_response(log, pmap, db)
 
 
 @router.delete("/blocks/{block_id}", status_code=204, dependencies=[require_role('ADMIN', 'OPERATOR')])
@@ -372,31 +553,38 @@ def add_expense(block_id: UUID, body: ExpenseCreate, db: Session = Depends(get_d
     if not db.get(ScheduleBlock, block_id):
         raise HTTPException(status_code=404, detail="Block not found")
     log, _ = _get_or_create_daily_log(db, block_id, body.entry_date)
-    expense = DailyExpense(
+    expense = BusinessExpense(
+        date=body.entry_date,
         daily_block_log_id=log.id,
-        category=body.category,
+        budget_category=body.budget_category,
         amount=body.amount,
+        vendor=body.vendor,
         description=body.description,
+        created_by=user_id,
     )
     db.add(expense)
     db.flush()
-    audit(db, "daily_expenses", expense.id, "CREATE", user_id, {
-        "category": body.category, "amount": float(body.amount), "description": body.description,
+    audit(db, "business_expenses", expense.id, "CREATE", user_id, {
+        "budget_category": body.budget_category, "amount": float(body.amount), "description": body.description,
     })
     db.commit()
     db.refresh(expense)
-    return expense
+    return ExpenseResponse(
+        id=expense.id, daily_block_log_id=expense.daily_block_log_id,
+        budget_category=expense.budget_category, amount=float(expense.amount),
+        vendor=expense.vendor, description=expense.description,
+    )
 
 @router.delete("/expenses/{expense_id}", status_code=204, dependencies=[require_role('ADMIN', 'OPERATOR')])
 def delete_expense(expense_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
-    exp = db.get(DailyExpense, expense_id)
+    exp = db.get(BusinessExpense, expense_id)
     if exp is None or exp.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Expense not found")
     now = datetime.now(timezone.utc)
     exp.deleted_at = now
     exp.deleted_by = user_id
-    audit(db, "daily_expenses", exp.id, "DELETE", user_id, {
-        "category": exp.category, "amount": float(exp.amount), "description": exp.description,
+    audit(db, "business_expenses", exp.id, "DELETE", user_id, {
+        "budget_category": exp.budget_category, "amount": float(exp.amount), "description": exp.description,
     })
     db.commit()
 

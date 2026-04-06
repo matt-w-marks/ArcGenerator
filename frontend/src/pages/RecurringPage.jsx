@@ -1,16 +1,9 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, Pencil, Check, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency } from '../lib/utils';
 
-const BUDGET_LABELS = {
-  fuel: 'Fuel', vehicle_maintenance: 'Vehicle Maintenance', vehicle_supplies: 'Vehicle Supplies',
-  vehicle_rental: 'Vehicle Rental', insurance: 'Insurance', tolls_parking: 'Tolls & Parking',
-  food_meals: 'Food & Meals', technology: 'Technology', licensing: 'Licensing',
-  professional_services: 'Professional Services', other: 'Other',
-};
-const BUDGET_CATS = Object.keys(BUDGET_LABELS);
 const FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' }, { value: 'biweekly', label: 'Bi-weekly' },
   { value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' },
@@ -21,13 +14,26 @@ function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 
 export default function RecurringPage() {
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ budget_category: 'vehicle_rental', amount: '', frequency: 'weekly', vendor: '', description: '', start_date: todayStr() });
+  const [form, setForm] = useState({ budget_category: '', amount: '', frequency: 'weekly', vendor: '', description: '', start_date: todayStr() });
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const [error, setError] = useState('');
 
+  const catLabel = (name) => categories.find((c) => c.name === name)?.label || name;
+
   async function load() {
-    const r = await api.get('/metrics/expenses/recurring');
-    if (r.ok) setItems(await r.json());
+    const [rRes, cRes] = await Promise.all([
+      api.get('/metrics/expenses/recurring'),
+      api.get('/metrics/expenses/budget-categories'),
+    ]);
+    if (rRes.ok) setItems(await rRes.json());
+    if (cRes.ok) {
+      const cats = await cRes.json();
+      setCategories(cats);
+      setForm((f) => f.budget_category ? f : { ...f, budget_category: cats[0]?.name || '' });
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -38,7 +44,7 @@ export default function RecurringPage() {
     const body = { ...form, amount: Number(form.amount) };
     const r = await api.post('/metrics/expenses/recurring', body);
     if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.detail || 'Failed'); return; }
-    setForm({ budget_category: 'vehicle_rental', amount: '', frequency: 'weekly', vendor: '', description: '', start_date: todayStr() });
+    setForm({ budget_category: categories[0]?.name || '', amount: '', frequency: 'weekly', vendor: '', description: '', start_date: todayStr() });
     setShowForm(false);
     load();
   }
@@ -46,6 +52,21 @@ export default function RecurringPage() {
   async function handleDelete(id) {
     if (!window.confirm('Delete this recurring expense?')) return;
     await api.delete(`/metrics/expenses/recurring/${id}`);
+    load();
+  }
+
+  function startEdit(i) {
+    setEditing(i.id);
+    setEditForm({ amount: i.amount, vendor: i.vendor || '', description: i.description || '', frequency: i.frequency, start_date: i.start_date || '' });
+  }
+
+  async function handleSaveEdit(id) {
+    await api.put(`/metrics/expenses/recurring/${id}`, {
+      amount: Number(editForm.amount), vendor: editForm.vendor || null,
+      description: editForm.description || null, frequency: editForm.frequency,
+      start_date: editForm.start_date || null,
+    });
+    setEditing(null);
     load();
   }
 
@@ -57,7 +78,7 @@ export default function RecurringPage() {
   const totalMonthly = items.filter((i) => i.active).reduce((s, i) => s + i.monthly_projection, 0);
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-3xl xl:max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ink-100">Recurring Expenses</h2>
@@ -85,7 +106,7 @@ export default function RecurringPage() {
                 <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Category</label>
                 <select className="arc-input text-sm font-light" value={form.budget_category}
                   onChange={(e) => setForm({ ...form, budget_category: e.target.value })}>
-                  {BUDGET_CATS.map((c) => <option key={c} value={c}>{BUDGET_LABELS[c]}</option>)}
+                  {categories.map((c) => <option key={c.name} value={c.name}>{c.label}</option>)}
                 </select>
               </div>
               <div>
@@ -145,14 +166,45 @@ export default function RecurringPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((i) => (
+              {items.map((i) => {
+                const isEditing = editing === i.id;
+                return (
                 <tr key={i.id} className={`border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors ${!i.active ? 'opacity-40' : ''}`}>
                   <td className="px-4 py-3">
-                    <p className="text-ink-100">{i.vendor || i.description || BUDGET_LABELS[i.budget_category]}</p>
-                    <p className="text-[9px] text-ink-500">{BUDGET_LABELS[i.budget_category]} · started {i.start_date}</p>
+                    {isEditing ? (
+                      <div className="space-y-1">
+                        <input type="text" className="arc-input text-xs font-light py-1 w-full" placeholder="Vendor"
+                          value={editForm.vendor} onChange={(e) => setEditForm({ ...editForm, vendor: e.target.value })} />
+                        <input type="text" className="arc-input text-xs font-light py-1 w-full" placeholder="Description"
+                          value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+                        <input type="date" className="arc-input text-xs font-light py-1 w-full"
+                          value={editForm.start_date} onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })} />
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-ink-100">{i.vendor || i.description || catLabel(i.budget_category)}</p>
+                        <p className="text-[9px] text-ink-500">{catLabel(i.budget_category)} · started {i.start_date}</p>
+                      </>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-right font-normal font-mono text-ink-300">{formatCurrency(i.amount)}</td>
-                  <td className="px-4 py-3 text-center text-[10px] text-ink-400 capitalize">{i.frequency}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isEditing ? (
+                      <input type="number" step="0.01" min="0" className="arc-input text-xs font-light font-mono py-1 w-20 text-right"
+                        value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
+                    ) : (
+                      <span className="font-normal font-mono text-ink-300">{formatCurrency(i.amount)}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {isEditing ? (
+                      <select className="arc-input text-[10px] font-light py-1" value={editForm.frequency}
+                        onChange={(e) => setEditForm({ ...editForm, frequency: e.target.value })}>
+                        {FREQUENCIES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-[10px] text-ink-400 capitalize">{i.frequency}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right font-normal font-mono text-ink-300">{formatCurrency(i.monthly_projection)}</td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => handleToggle(i.id, i.active)}
@@ -163,12 +215,23 @@ export default function RecurringPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDelete(i.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors">
-                      <Trash2 size={12} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {isEditing ? (
+                        <>
+                          <button onClick={() => handleSaveEdit(i.id)} className="text-arc hover:text-ink-50 p-0.5"><Check size={12} /></button>
+                          <button onClick={() => setEditing(null)} className="text-ink-400 hover:text-ink-50 p-0.5"><X size={12} /></button>
+                        </>
+                      ) : (
+                        <button onClick={() => startEdit(i)} className="text-ink-400 hover:text-ink-50 p-0.5"><Pencil size={12} /></button>
+                      )}
+                      <button onClick={() => handleDelete(i.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

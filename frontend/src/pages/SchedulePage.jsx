@@ -17,40 +17,42 @@ import {
 import {
   ChevronLeft, ChevronRight, Plus, Trash2,
   MapPin, Zap, Briefcase, Coffee, StickyNote, Check, Pencil, Save, ClipboardCheck,
+  Building2, Handshake, Rocket, CalendarDays,
 } from 'lucide-react';
 import { api } from '../lib/api';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const HOUR_H   = 56;
+const HOUR_H   = 72;
+const MIN_BLOCK_H = 32;
 const TIME_COL = 56;
 
 const BLOCK_STYLES = {
-  zone:      'bg-arc/15 border-arc/40 text-arc',
-  event:     'bg-ember/15 border-ember/40 text-ember',
-  job:       'bg-neural/15 border-neural/40 text-neural',
-  rest:      'bg-obsidian-700 border-obsidian-500 text-ink-300',
-  note:      'bg-success/10 border-success/30 text-success',
-  checklist: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
+  zone:       'bg-arc/15 border-arc/40 text-arc',
+  event:      'bg-ember/15 border-ember/40 text-ember',
+  job:        'bg-neural/15 border-neural/40 text-neural',
+  role:       'bg-violet-500/15 border-violet-500/40 text-violet-400',
+  engagement: 'bg-teal-500/15 border-teal-500/40 text-teal-400',
+  venture:    'bg-arc/15 border-arc/40 text-arc',
+  rest:       'bg-obsidian-700 border-obsidian-500 text-ink-300',
+  note:       'bg-success/10 border-success/30 text-success',
+  checklist:  'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
 };
 
 const BLOCK_ICONS = {
-  zone:      MapPin,
-  event:     Zap,
-  job:       Briefcase,
-  rest:      Coffee,
-  note:      StickyNote,
-  checklist: ClipboardCheck,
+  zone:       MapPin,
+  event:      Zap,
+  job:        Briefcase,
+  role:       Building2,
+  engagement: Handshake,
+  venture:    Rocket,
+  rest:       Coffee,
+  note:       StickyNote,
+  checklist:  ClipboardCheck,
 };
 
 const ZONE_TYPE_ORDER = ['Anchor', 'Core', 'Steady', 'Events', 'Surge'];
 
-const JOB_PRESETS = [
-  'Notary Appt',
-  'Outreach Session',
-  'Recruiter Call',
-  'Interview',
-];
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -172,7 +174,7 @@ function TimelineBlock({ block, anchorRank, onDelete, onResize, onEdit }) {
   const platformStyle = hasPlatform ? platformBlockStyle(block.platform_colors) : null;
   const dur           = block.hour_end - block.hour_start;
   const top    = block.hour_start * HOUR_H;
-  const height = dur * HOUR_H - 4;
+  const height = Math.max(MIN_BLOCK_H, dur * HOUR_H - 4);
   const resizing  = useRef(false);
   const startY    = useRef(0);
   const startEnd  = useRef(block.hour_end);
@@ -235,51 +237,8 @@ function TimelineBlock({ block, anchorRank, onDelete, onResize, onEdit }) {
         >
           {block.label}
         </span>
-        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onDelete(block.id); }}
-            onPointerDown={(e) => e.stopPropagation()}
-            title="Remove block"
-            className="rounded p-0.5 hover:bg-current/20 transition-colors"
-          >
-            <Trash2 size={10} />
-          </button>
-        </div>
       </div>
 
-      {/* Platform placards */}
-      {block.platform_colors?.length > 0 && (
-        <div className="flex flex-wrap gap-0.5 mt-0.5">
-          {block.platform_colors.map((color, i) => (
-            <span
-              key={color + i}
-              className="text-[8px] font-bold px-1 py-px rounded leading-tight shrink-0 tracking-tight"
-              style={{
-                backgroundColor: hexToRgba(color, 0.22),
-                color,
-                border: `1px solid ${hexToRgba(color, 0.60)}`,
-              }}
-            >
-              {block.platform_names?.[i] ?? ''}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Start time + gross */}
-      <div className="flex items-center gap-1.5 mt-0.5">
-        <span className="text-[9px] opacity-50 font-mono">{fmt12h(block.hour_start)}</span>
-        {block.actual_gross != null ? (
-          <span className="text-[9px] font-semibold opacity-90">
-            ${Number(block.actual_gross).toFixed(0)}
-          </span>
-        ) : block.gross_revenue > 0 ? (
-          <span className="text-[9px] opacity-40">
-            ~${Number(block.gross_revenue).toFixed(0)}
-          </span>
-        ) : null}
-      </div>
 
       {/* Notes preview */}
       {dur > 1.5 && block.notes && (
@@ -568,7 +527,7 @@ const TIME_OPTIONS = Array.from({ length: 53 }, (_, i) => {
 
 const REVENUE_BLOCKS = ['zone', 'event', 'job'];
 
-function BlockEditModal({ block, zones, platforms, onSave, onClose }) {
+function BlockEditModal({ block, zones, platforms, allChecklists, onSave, onClose, onDelete }) {
   const initDur = Number(block.hour_end) - Number(block.hour_start);
   const [startTime,    setStartTime]    = useState(Number(block.hour_start));
   const [duration,     setDuration]     = useState(
@@ -576,6 +535,7 @@ function BlockEditModal({ block, zones, platforms, onSave, onClose }) {
   );
   const [notes,        setNotes]        = useState(block.notes ?? '');
   const [zoneId,       setZoneId]       = useState(block.zone_id ?? '');
+  const [checklistId,  setChecklistId]  = useState(block.checklist_id ?? '');
   const [platformIds,  setPlatformIds]  = useState(() => new Set(block.platform_ids ?? []));
   const [grossRevenue, setGrossRevenue] = useState(Number(block.gross_revenue ?? 0));
   const [actualGross,  setActualGross]  = useState(
@@ -583,17 +543,21 @@ function BlockEditModal({ block, zones, platforms, onSave, onClose }) {
   );
 
   const canEarnRevenue = REVENUE_BLOCKS.includes(block.block_type);
+  const isChecklist = block.block_type === 'checklist';
 
   function handleSave() {
     const updates = {
       hour_start:    startTime,
       hour_end:      Math.min(26, startTime + duration),
       notes:         notes.trim() || null,
-      platform_ids:  [...platformIds],
-      gross_revenue: canEarnRevenue ? grossRevenue : 0,
-      actual_gross:  canEarnRevenue && actualGross !== '' ? Number(actualGross) : null,
     };
+    if (canEarnRevenue) {
+      updates.platform_ids = [...platformIds];
+      updates.gross_revenue = grossRevenue;
+      updates.actual_gross = actualGross !== '' ? Number(actualGross) : null;
+    }
     if (block.block_type === 'zone') updates.zone_id = zoneId || null;
+    if (isChecklist) updates.checklist_id = checklistId || null;
     onSave(block.id, updates);
   }
 
@@ -656,6 +620,23 @@ function BlockEditModal({ block, zones, platforms, onSave, onClose }) {
           </div>
         )}
 
+        {/* Checklist picker */}
+        {isChecklist && (
+          <div>
+            <label className="section-label block mb-1">Checklist</label>
+            <select
+              className="arc-input"
+              value={checklistId}
+              onChange={(e) => setChecklistId(e.target.value)}
+            >
+              <option value="">— none —</option>
+              {(allChecklists || []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Platform picker — multi-select toggle */}
         {canEarnRevenue && (
           <div>
@@ -698,38 +679,34 @@ function BlockEditModal({ block, zones, platforms, onSave, onClose }) {
           </div>
         )}
 
-        {/* Gross revenue — estimated and actual side by side */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="section-label block mb-1">
-              Est. gross ($){!canEarnRevenue && <span className="ml-1 opacity-40">n/a</span>}
-            </label>
-            <input
-              type="number"
-              className="arc-input"
-              min={0}
-              step={5}
-              disabled={!canEarnRevenue}
-              value={grossRevenue}
-              onChange={(e) => setGrossRevenue(Number(e.target.value))}
-            />
+        {/* Gross revenue — only for revenue-earning block types */}
+        {canEarnRevenue && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="section-label block mb-1">Est. gross ($)</label>
+              <input
+                type="number"
+                className="arc-input"
+                min={0}
+                step={5}
+                value={grossRevenue}
+                onChange={(e) => setGrossRevenue(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="section-label block mb-1">Actual gross ($)</label>
+              <input
+                type="number"
+                className="arc-input"
+                min={0}
+                step={0.01}
+                placeholder="—"
+                value={actualGross}
+                onChange={(e) => setActualGross(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="section-label block mb-1">
-              Actual gross ($){!canEarnRevenue && <span className="ml-1 opacity-40">n/a</span>}
-            </label>
-            <input
-              type="number"
-              className="arc-input"
-              min={0}
-              step={0.01}
-              disabled={!canEarnRevenue}
-              placeholder="—"
-              value={actualGross}
-              onChange={(e) => setActualGross(e.target.value)}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Notes */}
         <div>
@@ -743,11 +720,23 @@ function BlockEditModal({ block, zones, platforms, onSave, onClose }) {
           />
         </div>
 
-        <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="btn-ghost text-xs">Cancel</button>
-          <button type="button" onClick={handleSave} className="btn-primary text-xs gap-1.5">
-            <Save size={12} /> Save
+        <div className="flex items-center justify-between gap-2">
+          <button type="button"
+            onClick={() => {
+              if (window.confirm(`Delete "${block.label}"? This cannot be undone from the UI.`)) {
+                onDelete(block.id);
+                onClose();
+              }
+            }}
+            className="btn-ghost text-xs gap-1.5 text-error hover:bg-error/10">
+            <Trash2 size={12} /> Delete
           </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="btn-ghost text-xs">Cancel</button>
+            <button type="button" onClick={handleSave} className="btn-primary text-xs gap-1.5">
+              <Save size={12} /> Save
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -766,6 +755,7 @@ export default function SchedulePage() {
   const [activeId,        setActiveId]        = useState(null);
   const [blocks,          setBlocks]          = useState([]);
   const [zones,           setZones]           = useState([]);
+  const [incomeStreams,   setIncomeStreams]   = useState([]);
   const [platforms,       setPlatforms]       = useState([]);
   const [allChecklists,   setAllChecklists]   = useState([]);
   const [assignedDates,   setAssignedDates]   = useState(new Set());
@@ -795,6 +785,11 @@ export default function SchedulePage() {
   const loadZones = useCallback(async () => {
     const r = await api.get('/metrics/zones');
     if (r.ok) setZones(await r.json());
+  }, []);
+
+  const loadIncomeStreams = useCallback(async () => {
+    const r = await api.get('/metrics/income-streams?status=active');
+    if (r.ok) setIncomeStreams(await r.json());
   }, []);
 
   const loadPlatforms = useCallback(async () => {
@@ -834,7 +829,7 @@ export default function SchedulePage() {
     }
   }, []);
 
-  useEffect(() => { loadZones(); loadPlatforms(); loadAllChecklists(); }, [loadZones, loadPlatforms, loadAllChecklists]);
+  useEffect(() => { loadZones(); loadIncomeStreams(); loadPlatforms(); loadAllChecklists(); }, [loadZones, loadIncomeStreams, loadPlatforms, loadAllChecklists]);
 
   useEffect(() => {
     loadSchedules().then((list) => {
@@ -898,13 +893,6 @@ export default function SchedulePage() {
   async function handleDragEnd({ active, over }) {
     setActiveDrag(null);
 
-    // Dragged off the canvas — delete
-    if ((!over || !over.id.startsWith('hour:')) && active.id.startsWith('block:')) {
-      const blockId = active.id.split(':')[1];
-      await handleDelete(blockId);
-      return;
-    }
-
     if (!over || !over.id.startsWith('hour:')) return;
     const dropHour = parseFloat(over.id.split(':')[1]);
 
@@ -912,15 +900,22 @@ export default function SchedulePage() {
       if (!activeId) return;
       const parts     = active.id.split(':');
       const blockType = parts[1];
-      const zoneId    = parts[2] || null;
+      const refId     = parts[2] || null;
       const label     = parts.slice(3).join(':') || 'Block';
-      const r = await api.post(`/metrics/schedule/schedules/${activeId}/blocks`, {
+      const body = {
         hour_start: dropHour,
         hour_end:   Math.min(24, dropHour + 1),
         block_type: blockType,
-        zone_id:    zoneId || null,
         label,
-      });
+      };
+      if (blockType === 'zone' || blockType === 'event') {
+        body.zone_id = refId || null;
+      } else if (blockType === 'role' || blockType === 'engagement' || blockType === 'venture') {
+        body.income_stream_id = refId || null;
+      } else if (blockType === 'checklist') {
+        body.checklist_id = refId || null;
+      }
+      const r = await api.post(`/metrics/schedule/schedules/${activeId}/blocks`, body);
       if (r.ok) await loadBlocks(activeId);
 
     } else if (active.id.startsWith('block:')) {
@@ -1032,7 +1027,17 @@ export default function SchedulePage() {
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveDrag(null)}
     >
-      <div className="flex gap-4 h-full" style={{ height: 'calc(100vh - 48px)' }}>
+      <div className="max-w-3xl xl:max-w-7xl space-y-5">
+        <div>
+          <h1 className="page-title">Calendar</h1>
+          <p className="text-xs text-ink-400 mt-0.5">Schedule your day, week, or month</p>
+        </div>
+        <div className="flex gap-1 border-b border-obsidian-700">
+          <button type="button" className="flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 border-arc text-arc">
+            <CalendarDays size={12} /> Schedule
+          </button>
+        </div>
+      <div className="flex gap-4 h-full" style={{ height: 'calc(100vh - 200px)' }}>
 
         {/* Left: schedule list + calendar */}
         <div className="flex flex-col gap-3 shrink-0">
@@ -1151,9 +1156,10 @@ export default function SchedulePage() {
               {/* Palette */}
               <div className="w-48 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
 
-              {/* Zones grouped by type */}
+              {/* Ventures — Zones grouped by type */}
+              {zones.length > 0 && (
               <div>
-                <p className="section-label mb-2">Zones</p>
+                <p className="section-label mb-2">Ventures</p>
                 <div className="space-y-3">
                   {ZONE_TYPE_ORDER.map((type) => {
                     const group = zones.filter((z) => z.zone_type === type);
@@ -1178,39 +1184,58 @@ export default function SchedulePage() {
                   })}
                 </div>
               </div>
+              )}
 
-              {/* Job / Contract Work */}
+              {/* Roles — from income streams */}
+              {incomeStreams.filter((s) => s.stream_type === 'role').length > 0 && (
               <div>
-                <p className="section-label mb-2">Contract Work</p>
+                <p className="section-label mb-2">Roles</p>
                 <div className="space-y-1">
-                  {JOB_PRESETS.map((label) => (
+                  {incomeStreams.filter((s) => s.stream_type === 'role').map((s) => (
                     <PaletteItem
-                      key={label}
-                      id={`palette:job::${label}`}
-                      label={label}
-                      blockType="job"
+                      key={s.id}
+                      id={`palette:role:${s.id}:${s.company || s.name}`}
+                      label={s.company ? `${s.company}` : s.name}
+                      blockType="role"
                     />
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => setCustomJob(true)}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-neural/30 text-neural/70 text-xs hover:opacity-100 opacity-60 transition-opacity"
-                  >
-                    <Plus size={10} /> Custom…
-                  </button>
                 </div>
               </div>
+              )}
 
-              {/* Checklists */}
+              {/* Engagements — from income streams */}
+              {incomeStreams.filter((s) => s.stream_type === 'engagement').length > 0 && (
+              <div>
+                <p className="section-label mb-2">Engagements</p>
+                <div className="space-y-1">
+                  {incomeStreams.filter((s) => s.stream_type === 'engagement').map((s) => (
+                    <PaletteItem
+                      key={s.id}
+                      id={`palette:engagement:${s.id}:${s.client || s.name}`}
+                      label={s.client || s.name}
+                      blockType="engagement"
+                    />
+                  ))}
+                </div>
+              </div>
+              )}
+
+              {/* Checklists — dynamic from /metrics/maintenance/checklists */}
+              {allChecklists.length > 0 && (
               <div>
                 <p className="section-label mb-2">Checklists</p>
                 <div className="space-y-1">
-                  <PaletteItem id="palette:checklist::Pre-Day Checklist" label="Pre-Day Checklist" blockType="checklist" />
-                  <PaletteItem id="palette:checklist::Post-Day Checklist" label="Post-Day Checklist" blockType="checklist" />
-                  <PaletteItem id="palette:checklist::Pre-Trip Checklist" label="Pre-Trip Checklist" blockType="checklist" />
-                  <PaletteItem id="palette:checklist::Post-Trip Checklist" label="Post-Trip Checklist" blockType="checklist" />
+                  {allChecklists.map((cl) => (
+                    <PaletteItem
+                      key={cl.id}
+                      id={`palette:checklist:${cl.id}:${cl.name}`}
+                      label={cl.name}
+                      blockType="checklist"
+                    />
+                  ))}
                 </div>
               </div>
+              )}
 
               {/* Other */}
               <div>
@@ -1277,10 +1302,13 @@ export default function SchedulePage() {
           block={editingBlock}
           zones={zones}
           platforms={platforms}
+          allChecklists={allChecklists}
           onSave={handleEditSave}
           onClose={() => setEditingBlock(null)}
+          onDelete={handleDelete}
         />
       )}
+      </div>
     </DndContext>
   );
 }

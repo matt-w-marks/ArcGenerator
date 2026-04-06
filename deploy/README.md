@@ -1,16 +1,16 @@
-# RoadMap Dashboard — Azure Deployment Runbook
+# ArcGenerator Dashboard — Azure Deployment Runbook
 
 ## Overview
 
 | Service | Type | Ingress | Port |
 |---------|------|---------|------|
-| `ca-roadmap-gateway` | Node/Express | **External** | 3000 |
-| `ca-roadmap-frontend` | nginx (Vite PWA) | **External** | 80 |
-| `ca-roadmap-auth` | Node/Express | Internal | 3001 |
-| `ca-roadmap-metrics` | Python/FastAPI | Internal | 8000 |
-| `ca-roadmap-export` | Python/FastAPI | Internal | 8001 |
+| `ca-arcgen-gateway` | Node/Express | **External** | 3000 |
+| `ca-arcgen-frontend` | nginx (Vite PWA) | **External** | 80 |
+| `ca-arcgen-auth` | Node/Express | Internal | 3001 |
+| `ca-arcgen-metrics` | Python/FastAPI | Internal | 8000 |
+| `ca-arcgen-export` | Python/FastAPI | Internal | 8001 |
 
-All services run in the same **Azure Container Apps Environment** (`cae-roadmap-prod`).
+All services run in the same **Azure Container Apps Environment** (`cae-arcgen-prod`).
 Internal services are reachable only from within the environment — not from the internet.
 All secrets are stored in **Azure Key Vault** and referenced via managed identity — no secret values appear in manifests or code.
 
@@ -29,11 +29,11 @@ az provider register --namespace Microsoft.OperationalInsights
 ## Step 1 — Create Resource Group and Managed Identity
 
 ```bash
-export RESOURCE_GROUP=rg-roadmap-prod
+export RESOURCE_GROUP=rg-arcgen-prod
 export LOCATION=eastus
-export MANAGED_IDENTITY=id-roadmap-prod
-export ACR_NAME=acrroadmapprod          # must be globally unique
-export KEYVAULT_NAME=kv-roadmap-prod    # must be globally unique
+export MANAGED_IDENTITY=id-arcgen-prod
+export ACR_NAME=acrarcgenprod          # must be globally unique
+export KEYVAULT_NAME=kv-arcgen-prod    # must be globally unique
 
 az group create --name $RESOURCE_GROUP --location $LOCATION
 
@@ -91,7 +91,7 @@ for service in gateway auth metrics export frontend; do
 
   az acr build \
     --registry $ACR_NAME \
-    --image roadmap/$service:$IMAGE_TAG \
+    --image arcgenerator/$service:$IMAGE_TAG \
     --file $context/Dockerfile \
     $context
 done
@@ -100,7 +100,7 @@ done
 > **Note**: The `frontend` build requires the `deploy/nginx/` directory at the repo root because
 > the Dockerfile references `deploy/nginx/default.conf`. Build context must be the repo root:
 > ```bash
-> az acr build --registry $ACR_NAME --image roadmap/frontend:$IMAGE_TAG \
+> az acr build --registry $ACR_NAME --image arcgenerator/frontend:$IMAGE_TAG \
 >   --file frontend/Dockerfile .
 > ```
 
@@ -140,7 +140,7 @@ Update `deploy/azure/container-app-env.yaml` with your Log Analytics workspace d
 
 ```bash
 az containerapp env create \
-  --name cae-roadmap-prod \
+  --name cae-arcgen-prod \
   --resource-group $RESOURCE_GROUP \
   --location $LOCATION
 ```
@@ -154,7 +154,7 @@ Before deploying each YAML manifest, replace all `<placeholder>` values:
 ```bash
 SUBSCRIPTION_ID=$(az account show --query id --output tsv)
 ACA_ENV_DOMAIN=$(az containerapp env show \
-  --name cae-roadmap-prod \
+  --name cae-arcgen-prod \
   --resource-group $RESOURCE_GROUP \
   --query properties.defaultDomain --output tsv)
 
@@ -166,7 +166,7 @@ for f in deploy/azure/*.yaml; do
     -e "s|<acr-name>|$ACR_NAME|g" \
     -e "s|<keyvault-name>|$KEYVAULT_NAME|g" \
     -e "s|<aca-env-default-domain>|$ACA_ENV_DOMAIN|g" \
-    -e "s|id-roadmap-prod|$MANAGED_IDENTITY_ID|g" \
+    -e "s|id-arcgen-prod|$MANAGED_IDENTITY_ID|g" \
     "$f"
 done
 
@@ -186,12 +186,12 @@ az containerapp create --yaml deploy/azure/frontend.yaml  --resource-group $RESO
 
 ```bash
 GATEWAY_URL=$(az containerapp show \
-  --name ca-roadmap-gateway \
+  --name ca-arcgen-gateway \
   --resource-group $RESOURCE_GROUP \
   --query properties.configuration.ingress.fqdn --output tsv)
 
 FRONTEND_URL=$(az containerapp show \
-  --name ca-roadmap-frontend \
+  --name ca-arcgen-frontend \
   --resource-group $RESOURCE_GROUP \
   --query properties.configuration.ingress.fqdn --output tsv)
 
@@ -205,9 +205,9 @@ curl https://$FRONTEND_URL/         # 200 HTML
 
 ```bash
 az containerapp update \
-  --name ca-roadmap-gateway \
+  --name ca-arcgen-gateway \
   --resource-group $RESOURCE_GROUP \
-  --image $ACR_NAME.azurecr.io/roadmap/gateway:1.1.0
+  --image $ACR_NAME.azurecr.io/arcgenerator/gateway:1.1.0
 ```
 
 Azure Container Apps creates a new revision and shifts traffic automatically (single-revision mode replaces previous).
@@ -223,10 +223,10 @@ az keyvault secret set --vault-name $KEYVAULT_NAME --name jwt-secret --value "<n
 
 # Force new revision to reload secrets
 az containerapp revision restart \
-  --name ca-roadmap-gateway \
+  --name ca-arcgen-gateway \
   --resource-group $RESOURCE_GROUP \
   --revision $(az containerapp revision list \
-    --name ca-roadmap-gateway \
+    --name ca-arcgen-gateway \
     --resource-group $RESOURCE_GROUP \
     --query "[0].name" --output tsv)
 ```
@@ -238,10 +238,10 @@ az containerapp revision restart \
 | Placeholder | Description |
 |-------------|-------------|
 | `<subscription-id>` | Azure subscription ID |
-| `<resource-group>` | Resource group name (`rg-roadmap-prod`) |
-| `<acr-name>` | Azure Container Registry name (`acrroadmapprod`) |
-| `<keyvault-name>` | Key Vault name (`kv-roadmap-prod`) |
+| `<resource-group>` | Resource group name (`rg-arcgen-prod`) |
+| `<acr-name>` | Azure Container Registry name (`acrarcgenprod`) |
+| `<keyvault-name>` | Key Vault name (`kv-arcgen-prod`) |
 | `<aca-env-default-domain>` | Container Apps environment default domain |
-| `id-roadmap-prod` | Managed identity resource ID |
+| `id-arcgen-prod` | Managed identity resource ID |
 | `<log-analytics-workspace-id>` | Log Analytics workspace customer ID |
 | `<log-analytics-workspace-key>` | Log Analytics workspace shared key |

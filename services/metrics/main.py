@@ -6,7 +6,7 @@ from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from routers import audit, driving_sessions, expenses, financial_snapshots, fleet, job_activities, maintenance, platforms, reports, schedule, shift_log, weekly_rollups, zones
+from routers import audit, driving_sessions, expenses, financial_snapshots, fleet, income_entries, income_streams, job_activities, maintenance, platforms, reports, schedule, shift_log, weekly_rollups, zones
 
 
 @asynccontextmanager
@@ -27,6 +27,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 app.include_router(driving_sessions.router)
+app.include_router(income_streams.router)
+app.include_router(income_entries.router)
 app.include_router(job_activities.router)
 app.include_router(financial_snapshots.router)
 app.include_router(weekly_rollups.router)

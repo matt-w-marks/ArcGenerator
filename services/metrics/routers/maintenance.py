@@ -1,15 +1,18 @@
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, joinedload
 
+from audit import get_user_id
 from database import get_db
 from role_guard import require_role
 from models.checklist import Checklist
 from models.checklist_item import ChecklistItem
 from models.checklist_log import ChecklistLog
+from models.checklist_log_photo import ChecklistLogPhoto
 from models.maintenance_record import MaintenanceRecord
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -92,11 +95,14 @@ class ChecklistCreate(BaseModel):
     name:           str = Field(min_length=1, max_length=64)
     description:    str | None = None
     checklist_type: str = Field(pattern="^(pre_day|post_day|pre_trip|post_trip)$")
+    allow_photos:   bool = False
 
 
 class ChecklistUpdate(BaseModel):
-    name:        str | None = Field(default=None, max_length=64)
-    description: str | None = None
+    name:           str | None = Field(default=None, max_length=64)
+    description:    str | None = None
+    checklist_type: str | None = None
+    allow_photos:   bool | None = None
 
 
 class ChecklistResponse(BaseModel):
@@ -104,6 +110,7 @@ class ChecklistResponse(BaseModel):
     name:           str
     description:    str | None
     checklist_type: str
+    allow_photos:   bool = False
     items:          list[ChecklistItemResponse] = []
 
     @classmethod
@@ -113,6 +120,7 @@ class ChecklistResponse(BaseModel):
             name=c.name,
             description=c.description,
             checklist_type=c.checklist_type,
+            allow_photos=c.allow_photos,
             items=[
                 ChecklistItemResponse.model_validate(i)
                 for i in c.items
@@ -274,6 +282,18 @@ def delete_item(item_id: UUID, db: Session = Depends(get_db)):
 
 # ── Checklist logs ────────────────────────────────────────────────────────────
 
+class ChecklistLogHistoryRow(BaseModel):
+    id: UUID
+    checklist_id: UUID | None
+    checklist_name: str | None
+    checklist_type: str | None
+    log_date: date
+    completed_at: datetime
+    checked_count: int
+    notes: str | None
+    photo_count: int
+
+
 @router.get("/checklist-logs", response_model=list[ChecklistLogResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_logs(
     checklist_id: UUID | None = None,
@@ -288,6 +308,47 @@ def list_logs(
         q = q.filter(ChecklistLog.log_date == log_date)
     logs = q.order_by(ChecklistLog.completed_at.desc()).limit(limit).all()
     return [ChecklistLogResponse.from_log(l) for l in logs]
+
+
+@router.get("/checklist-logs/history", response_model=list[ChecklistLogHistoryRow], dependencies=[require_role('ADMIN', 'OPERATOR')])
+def history_logs(
+    checklist_id: UUID | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    has_photos: bool | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """History view: list completed checklists with filters and photo counts."""
+    from sqlalchemy import func as sqf
+    q = db.query(
+        ChecklistLog,
+        Checklist.name,
+        Checklist.checklist_type,
+        sqf.count(ChecklistLogPhoto.id).label("photo_count"),
+    ).outerjoin(Checklist, Checklist.id == ChecklistLog.checklist_id) \
+     .outerjoin(ChecklistLogPhoto, ChecklistLogPhoto.checklist_log_id == ChecklistLog.id) \
+     .group_by(ChecklistLog.id, Checklist.name, Checklist.checklist_type)
+    if checklist_id:
+        q = q.filter(ChecklistLog.checklist_id == checklist_id)
+    if from_date:
+        q = q.filter(ChecklistLog.log_date >= from_date)
+    if to_date:
+        q = q.filter(ChecklistLog.log_date <= to_date)
+    if has_photos is True:
+        q = q.having(sqf.count(ChecklistLogPhoto.id) > 0)
+    elif has_photos is False:
+        q = q.having(sqf.count(ChecklistLogPhoto.id) == 0)
+    rows = q.order_by(ChecklistLog.log_date.desc(), ChecklistLog.completed_at.desc()).limit(limit).all()
+    return [
+        ChecklistLogHistoryRow(
+            id=row[0].id, checklist_id=row[0].checklist_id,
+            checklist_name=row[1], checklist_type=row[2],
+            log_date=row[0].log_date, completed_at=row[0].completed_at,
+            checked_count=len(row[0].checked_ids or []), notes=row[0].notes,
+            photo_count=row[3],
+        ) for row in rows
+    ]
 
 
 @router.post("/checklist-logs", response_model=ChecklistLogResponse, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
@@ -305,4 +366,68 @@ def delete_log(log_id: UUID, db: Session = Depends(get_db)):
     if log is None:
         raise HTTPException(status_code=404, detail="Log not found")
     db.delete(log)
+    db.commit()
+
+
+# ── Checklist log photos ─────────────────────────────────────────────────────
+
+ALLOWED_PHOTO_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif"}
+MAX_PHOTO_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+class ChecklistLogPhotoBrief(BaseModel):
+    id: UUID
+    checklist_log_id: UUID
+    photo_mime: str
+    caption: str | None
+    uploaded_at: datetime
+
+
+@router.get("/checklist-logs/{log_id}/photos", response_model=list[ChecklistLogPhotoBrief], dependencies=[require_role('ADMIN', 'OPERATOR')])
+def list_photos(log_id: UUID, db: Session = Depends(get_db)):
+    photos = db.query(ChecklistLogPhoto).filter(ChecklistLogPhoto.checklist_log_id == log_id).order_by(ChecklistLogPhoto.uploaded_at).all()
+    return [ChecklistLogPhotoBrief(
+        id=p.id, checklist_log_id=p.checklist_log_id, photo_mime=p.photo_mime,
+        caption=p.caption, uploaded_at=p.uploaded_at,
+    ) for p in photos]
+
+
+@router.post("/checklist-logs/{log_id}/photos", response_model=ChecklistLogPhotoBrief, status_code=201, dependencies=[require_role('ADMIN', 'OPERATOR')])
+async def upload_photo(log_id: UUID, file: UploadFile = File(...), caption: str | None = None,
+                       db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    log = db.get(ChecklistLog, log_id)
+    if log is None:
+        raise HTTPException(status_code=404, detail="Checklist log not found")
+    if file.content_type not in ALLOWED_PHOTO_MIMES:
+        raise HTTPException(status_code=400, detail=f"Mime type not allowed: {file.content_type}")
+    data = await file.read()
+    if len(data) > MAX_PHOTO_SIZE:
+        raise HTTPException(status_code=413, detail="Photo exceeds 10 MB limit")
+    photo = ChecklistLogPhoto(
+        checklist_log_id=log_id, photo_data=data, photo_mime=file.content_type,
+        caption=caption, uploaded_by=user_id,
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return ChecklistLogPhotoBrief(
+        id=photo.id, checklist_log_id=photo.checklist_log_id, photo_mime=photo.photo_mime,
+        caption=photo.caption, uploaded_at=photo.uploaded_at,
+    )
+
+
+@router.get("/checklist-log-photos/{photo_id}", dependencies=[require_role('ADMIN', 'OPERATOR')])
+def get_photo(photo_id: UUID, db: Session = Depends(get_db)):
+    photo = db.get(ChecklistLogPhoto, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return Response(content=photo.photo_data, media_type=photo.photo_mime)
+
+
+@router.delete("/checklist-log-photos/{photo_id}", status_code=204, dependencies=[require_role('ADMIN')])
+def delete_photo(photo_id: UUID, db: Session = Depends(get_db)):
+    photo = db.get(ChecklistLogPhoto, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    db.delete(photo)
     db.commit()

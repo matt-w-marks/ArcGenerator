@@ -1,15 +1,200 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, Car } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, Car, Wrench, ClipboardCheck, Check } from 'lucide-react';
 import { api } from '../lib/api';
-import { formatCurrency, round1 } from '../lib/utils';
+import { formatCurrency, formatDate, round1 } from '../lib/utils';
 
 const OWNERSHIP_LABELS = { rental: 'Rental', owned: 'Owned', leased: 'Leased' };
 const STATUS_STYLES = { active: 'bg-success/15 text-success border-success/30', retired: 'bg-obsidian-700 text-ink-500' };
+const SERVICE_TYPES = ['Oil Change', 'Tire Rotation', 'Tire Replacement', 'Brake Service', 'Battery', 'Alignment', 'Transmission', 'A/C Service', 'Inspection', 'Other'];
 
 function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 
+// ── Maintenance tab ──────────────────────────────────────────────────────────
+function MaintenanceTab() {
+  const [records, setRecords] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ service_date: todayStr(), shop_name: '', service_type: '', description: '', mileage: '', cost: '', next_due_miles: '', next_due_date: '', notes: '' });
+  const [error, setError] = useState('');
+
+  async function load() {
+    const r = await api.get('/metrics/maintenance/records');
+    if (r.ok) setRecords(await r.json());
+  }
+  useEffect(() => { load(); }, []);
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    setError('');
+    const body = {
+      service_date: form.service_date, shop_name: form.shop_name, service_type: form.service_type,
+      description: form.description || null, mileage: form.mileage ? Number(form.mileage) : null,
+      cost: form.cost ? Number(form.cost) : null, next_due_miles: form.next_due_miles ? Number(form.next_due_miles) : null,
+      next_due_date: form.next_due_date || null, notes: form.notes || null,
+    };
+    const r = await api.post('/metrics/maintenance/records', body);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.detail || 'Failed'); return; }
+    setForm({ service_date: todayStr(), shop_name: '', service_type: '', description: '', mileage: '', cost: '', next_due_miles: '', next_due_date: '', notes: '' });
+    setShowForm(false); load();
+  }
+
+  async function handleDelete(id) {
+    await api.delete(`/metrics/maintenance/records/${id}`);
+    load();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-ink-500">{records.length} service records</p>
+        <button onClick={() => setShowForm(true)} className="btn-primary text-xs gap-1.5"><Plus size={12} /> Add Record</button>
+      </div>
+      {error && <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-error/10 border border-error/30 text-error text-xs"><AlertCircle size={12} /> {error}</div>}
+      {showForm && (
+        <div className="metal-card p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-ink-100">New Service Record</h3>
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Date *</label>
+                <input type="date" required className="arc-input text-sm font-light" value={form.service_date} onChange={(e) => setForm({ ...form, service_date: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Shop *</label>
+                <input type="text" required maxLength={128} className="arc-input text-sm font-light" placeholder="Jiffy Lube" value={form.shop_name} onChange={(e) => setForm({ ...form, shop_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Service *</label>
+                <select required className="arc-input text-sm font-light" value={form.service_type} onChange={(e) => setForm({ ...form, service_type: e.target.value })}>
+                  <option value="">Select...</option>
+                  {SERVICE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Odometer</label>
+                <input type="number" className="arc-input text-sm font-light font-mono" placeholder="Miles" value={form.mileage} onChange={(e) => setForm({ ...form, mileage: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Cost</label>
+                <input type="number" step="0.01" min="0" className="arc-input text-sm font-light font-mono" placeholder="$0.00" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Description</label>
+                <input type="text" maxLength={256} className="arc-input text-sm font-light" placeholder="Synthetic 5W-30" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Next Due Miles</label>
+                <input type="number" className="arc-input text-sm font-light font-mono" value={form.next_due_miles} onChange={(e) => setForm({ ...form, next_due_miles: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Next Due Date</label>
+                <input type="date" className="arc-input text-sm font-light" value={form.next_due_date} onChange={(e) => setForm({ ...form, next_due_date: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setShowForm(false)} className="btn-ghost text-xs">Cancel</button>
+              <button type="submit" className="btn-primary text-xs">Add</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {records.length > 0 && (
+        <div className="metal-card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-obsidian-600">
+                <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Date</th>
+                <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Service</th>
+                <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Shop</th>
+                <th className="text-right text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Cost</th>
+                <th className="text-right text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Miles</th>
+                <th className="px-2 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((r) => (
+                <tr key={r.id} className="border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors">
+                  <td className="px-4 py-3 text-xs font-mono text-ink-400">{formatDate(r.service_date)}</td>
+                  <td className="px-4 py-3">
+                    <p className="text-ink-100">{r.service_type}</p>
+                    {r.description && <p className="text-[9px] text-ink-500">{r.description}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-ink-300">{r.shop_name}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink-300">{r.cost ? formatCurrency(r.cost) : '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-ink-400">{r.mileage ? r.mileage.toLocaleString() : '—'}</td>
+                  <td className="px-2 py-3">
+                    <button onClick={() => handleDelete(r.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors"><Trash2 size={12} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {records.length === 0 && !showForm && (
+        <div className="metal-card px-6 py-8 text-center">
+          <p className="text-ink-400 text-sm">No maintenance records.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Checklists tab ───────────────────────────────────────────────────────────
+function ChecklistsTab() {
+  const [checklists, setChecklists] = useState([]);
+  const [logs, setLogs] = useState([]);
+
+  async function load() {
+    const [cRes, lRes] = await Promise.all([
+      api.get('/metrics/maintenance/checklists'),
+      api.get('/metrics/maintenance/checklist-logs?limit=30'),
+    ]);
+    if (cRes.ok) setChecklists(await cRes.json());
+    if (lRes.ok) setLogs(await lRes.json());
+  }
+  useEffect(() => { load(); }, []);
+
+  return (
+    <div className="space-y-4">
+      {checklists.length === 0 && (
+        <div className="metal-card px-6 py-8 text-center">
+          <p className="text-ink-400 text-sm">No checklists configured.</p>
+        </div>
+      )}
+      {checklists.map((cl) => (
+        <div key={cl.id} className="metal-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ClipboardCheck size={14} className="text-arc" />
+            <h3 className="text-sm font-semibold text-ink-100">{cl.name}</h3>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-arc/10 text-arc border border-arc/20 uppercase">{cl.checklist_type}</span>
+          </div>
+          <div className="space-y-1">
+            {(cl.items || []).map((item) => (
+              <div key={item.id} className="flex items-center gap-2 text-xs text-ink-300">
+                <Check size={10} className="text-ink-500" />
+                {item.label}
+              </div>
+            ))}
+          </div>
+          {logs.filter((l) => l.checklist_id === cl.id).length > 0 && (
+            <div className="mt-2 pt-2 border-t border-obsidian-700/30">
+              <p className="text-[9px] text-ink-500 mb-1">Recent completions:</p>
+              <div className="flex gap-2">
+                {logs.filter((l) => l.checklist_id === cl.id).slice(0, 5).map((l) => (
+                  <span key={l.id} className="text-[9px] font-mono text-ink-400">{formatDate(l.log_date)}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function FleetPage() {
+  const [tab, setTab] = useState('vehicles');
   const [vehicles, setVehicles] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [summaries, setSummaries] = useState({});
@@ -76,12 +261,28 @@ export default function FleetPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-3xl xl:max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Fleet</h1>
-          <p className="text-xs text-ink-400 mt-0.5">Vehicle registry and per-vehicle cost tracking</p>
+          <p className="text-xs text-ink-400 mt-0.5">Vehicles, maintenance, and checklists</p>
         </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-obsidian-700">
+        {[['vehicles', 'Vehicles'], ['maintenance', 'Maintenance']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setTab(id)}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === id ? 'border-arc text-arc' : 'border-transparent text-ink-400 hover:text-ink-200'
+            }`}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'maintenance' && <MaintenanceTab />}
+
+      {tab === 'vehicles' && (<>
+      <div className="flex justify-end">
         <button onClick={() => setShowForm(true)} className="btn-primary text-xs gap-1.5">
           <Plus size={12} /> Add Vehicle
         </button>
@@ -264,6 +465,7 @@ export default function FleetPage() {
           </div>
         );
       })}
+      </>)}
     </div>
   );
 }

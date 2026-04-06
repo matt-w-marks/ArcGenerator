@@ -4,14 +4,14 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: roadmap
+      POSTGRES_DB: arcgenerator
     ports:
       - "4432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d roadmap"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d arcgenerator"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -87,9 +87,7 @@ services:
       retries: 3
 
   frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
+    build: ./frontend
     ports:
       - "4001:80"
     volumes:

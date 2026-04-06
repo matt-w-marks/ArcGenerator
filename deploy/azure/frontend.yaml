@@ -4,18 +4,18 @@
 # direct paths — configure your DNS/CDN accordingly).
 
 location: eastus
-name: ca-roadmap-frontend
+name: ca-arcgen-frontend
 type: Microsoft.App/containerApps
 
 properties:
-  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-roadmap-prod
+  environmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/cae-arcgen-prod
 
   configuration:
     activeRevisionsMode: Single
 
     registries:
       - server: <acr-name>.azurecr.io
-        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-roadmap-prod
+        identity: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-arcgen-prod
 
     ingress:
       external: true
@@ -29,7 +29,7 @@ properties:
   template:
     containers:
       - name: frontend
-        image: <acr-name>.azurecr.io/roadmap/frontend:1.0.0
+        image: <acr-name>.azurecr.io/arcgenerator/frontend:1.0.0
         resources:
           cpu: 0.25
           memory: 0.5Gi

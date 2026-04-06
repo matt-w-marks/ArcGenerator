@@ -3,16 +3,15 @@ FROM node:20.19.1-alpine3.21 AS build
 
 WORKDIR /app
 
-COPY frontend/package.json frontend/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-COPY frontend/index.html frontend/vite.config.js ./
-COPY frontend/public/  ./public/
-COPY frontend/src/     ./src/
+COPY index.html vite.config.js ./
+COPY public/  ./public/
+COPY src/     ./src/
 
-# GATEWAY_URL is the internal Container Apps URL for the gateway service.
-# Set at build time so the Vite proxy config is baked in; the production build
-# uses same-origin fetch (no proxy) — the nginx reverse proxy handles routing.
+# Production build uses same-origin fetch — the nginx reverse proxy handles
+# routing. No GATEWAY_URL needed at build time.
 RUN npm run build
 
 # ── Runtime stage — nginx serving static files ────────────────────────────────
@@ -20,7 +19,7 @@ FROM nginx:1.27.4-alpine3.21 AS runtime
 
 # Remove default config and replace with SPA config
 RUN rm /etc/nginx/conf.d/default.conf
-COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY --from=build /app/dist /usr/share/nginx/html
 

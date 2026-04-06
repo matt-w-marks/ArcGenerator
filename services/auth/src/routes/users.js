@@ -29,7 +29,7 @@ router.use(requireAdmin);
 router.get('/', async (req, res, next) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'email', 'role', 'created_at', 'failed_attempts', 'locked_until'],
+      attributes: ['id', 'email', 'role', 'first_name', 'last_name', 'created_at', 'failed_attempts', 'locked_until'],
       order: [['created_at', 'ASC']],
     });
     return res.json(users);
@@ -44,14 +44,11 @@ router.post('/', async (req, res, next) => {
   try {
     const { email, password, role } = req.body;
 
-    if (!email || !password || !role) {
-      return res.status(400).json({ error: 'email, password, and role are required' });
+    if (!email || !role) {
+      return res.status(400).json({ error: 'email and role are required' });
     }
     if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
-    }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
     const existing = await User.findOne({ where: { email } });
@@ -59,7 +56,17 @@ router.post('/', async (req, res, next) => {
       return res.status(409).json({ error: 'Email already in use' });
     }
 
-    const password_hash = await authService.hashPassword(password);
+    // Password is optional — SSO-only users have no local password until they choose one
+    let password_hash = null;
+    if (password) {
+      const passwordPolicy = require('../services/passwordPolicy');
+      const policy = await passwordPolicy.validatePolicy(password, null);
+      if (!policy.valid) {
+        return res.status(400).json({ error: policy.errors[0], errors: policy.errors });
+      }
+      password_hash = await authService.hashPassword(password);
+    }
+
     const user = await User.create({ id: uuidv4(), email, password_hash, role });
 
     logEvent('INFO', 'user created by admin', { userId: user.id, email, role, createdBy: req.headers['x-user-id'] });

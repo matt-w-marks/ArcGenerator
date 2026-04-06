@@ -150,7 +150,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
     ? summary.avg_per_hour >= financial.breakeven_per_hour * 1.5 ? 'good' : summary.avg_per_hour >= financial.breakeven_per_hour ? 'warning' : 'bad'
     : 'neutral';
   const gasPctStatus = expenses ? (expenses.gas_pct_of_gross > 12 ? 'bad' : expenses.gas_pct_of_gross > 8 ? 'warning' : 'good') : 'neutral';
-  const runwayStatus = financial ? (financial.runway_days >= 60 ? 'good' : financial.runway_days >= 30 ? 'warning' : 'bad') : 'neutral';
+  const runwayStatus = financial ? (financial.runway_days >= 180 ? 'good' : financial.runway_days >= 90 ? 'warning' : 'bad') : 'neutral';
 
   // Yesterday comparison
   const yesterday = byDay.length >= 2 ? byDay[byDay.length - 2] : null;
@@ -321,7 +321,7 @@ function ScorecardView({ summary, weekly, financial, expenses, byDay, byPlatform
             </div>
             <div className="w-full h-1.5 rounded-full bg-obsidian-700 overflow-hidden">
               <div className={`h-full rounded-full ${runwayStatus === 'good' ? 'bg-success' : runwayStatus === 'warning' ? 'bg-ember' : 'bg-error'}`}
-                style={{ width: `${Math.min(100, financial.runway_days / 90 * 100)}%` }} />
+                style={{ width: `${Math.min(100, financial.runway_days / 180 * 100)}%` }} />
             </div>
           </div>
           <div className="text-right shrink-0">
@@ -511,11 +511,11 @@ function StoryView({ summary, weekly, financial, expenses, byDay, byPlatform, by
         >
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <ProgressRing pct={Math.min(100, Math.round(financial.runway_days / 90 * 100))} size={44} stroke={4}
-                color={financial.runway_days >= 60 ? '#22c55e' : financial.runway_days >= 30 ? '#f97316' : '#ef4444'} />
+              <ProgressRing pct={Math.min(100, Math.round(financial.runway_days / 180 * 100))} size={44} stroke={4}
+                color={financial.runway_days >= 180 ? '#22c55e' : financial.runway_days >= 90 ? '#f97316' : '#ef4444'} />
               <p className="text-[9px] text-ink-500 mt-1 flex items-center justify-center gap-1">
                 Runway
-                <InfoTip description="Days your bankroll covers at current monthly burn. Green = 60+ days, yellow = 30–60, red = under 30." formula="bankroll / (monthly_nut / 30)" />
+                <InfoTip description="Days your bankroll covers at current monthly burn. Green = 180+ days, yellow = 90–179, red = under 90." formula="bankroll / (monthly_nut / 30)" />
               </p>
             </div>
             <div className="text-center">
@@ -597,32 +597,33 @@ export default function ReportsPage() {
   const data = { summary, weekly, financial, expenses, byDay, byPlatform, byZone, taxSummary, jobSearch };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <div className="max-w-3xl xl:max-w-5xl space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="page-title">Reports</h1>
-        <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex rounded-lg border border-obsidian-600 overflow-hidden">
-            <button onClick={() => setView('scorecard')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${view === 'scorecard' ? 'bg-arc/10 text-arc' : 'text-ink-400 hover:text-ink-50'}`}>
-              <Gauge size={12} /> Scorecard
-            </button>
-            <button onClick={() => setView('story')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${view === 'story' ? 'bg-arc/10 text-arc' : 'text-ink-400 hover:text-ink-50'}`}>
-              <BookOpen size={12} /> Story
-            </button>
-          </div>
-          {/* Range picker */}
-          <div className="flex gap-1">
-            {[['today', 'Today'], ['week', '7D'], ['month', 'MTD']].map(([k, label]) => (
-              <button key={k} onClick={() => setRange(k)}
-                className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${range === k ? 'border-arc/40 bg-arc/10 text-arc' : 'border-obsidian-600 text-ink-400 hover:text-ink-50'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
+        <div>
+          <h1 className="page-title">Reports</h1>
+          <p className="text-xs text-ink-400 mt-0.5">Earnings, expenses, and financial health</p>
         </div>
+        <div className="flex gap-1">
+          {[['today', 'Today'], ['week', '7D'], ['month', 'MTD']].map(([k, label]) => (
+            <button key={k} onClick={() => setRange(k)}
+              className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${range === k ? 'border-arc/40 bg-arc/10 text-arc' : 'border-obsidian-600 text-ink-400 hover:text-ink-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-obsidian-700">
+        {[['scorecard', 'Scorecard', Gauge], ['story', 'Story', BookOpen]].map(([id, label, Icon]) => (
+          <button key={id} type="button" onClick={() => setView(id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              view === id ? 'border-arc text-arc' : 'border-transparent text-ink-400 hover:text-ink-200'
+            }`}>
+            <Icon size={12} />{label}
+          </button>
+        ))}
       </div>
 
       {/* View */}

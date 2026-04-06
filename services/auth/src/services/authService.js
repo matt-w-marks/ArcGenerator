@@ -17,8 +17,8 @@ function comparePassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
-function generateAccessToken(userId, role) {
-  return jwt.sign({ sub: userId, role }, process.env.JWT_SECRET, {
+function generateAccessToken(userId, role, firstName, lastName) {
+  return jwt.sign({ sub: userId, role, first_name: firstName || null, last_name: lastName || null }, process.env.JWT_SECRET, {
     expiresIn: ACCESS_TOKEN_EXPIRY,
   });
 }

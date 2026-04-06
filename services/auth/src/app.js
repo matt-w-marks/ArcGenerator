@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const errorHandler = require('./middleware/errorHandler');
+const cloudflareAccess = require('./middleware/cloudflareAccess');
 
 const app = express();
 
@@ -22,6 +23,7 @@ const authLimiter = rateLimit({
 if (!process.env.JEST_WORKER_ID) {
   app.use('/auth', authLimiter);
 }
+app.use(cloudflareAccess);
 app.use('/auth', authRoutes);
 app.use('/auth/users', usersRoutes);
 

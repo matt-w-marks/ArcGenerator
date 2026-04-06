@@ -1,92 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
-import { format } from 'date-fns';
+import { format, addMonths, subMonths } from 'date-fns';
 import {
-  Plus, Trash2, AlertCircle, Upload, Receipt, ChevronDown, ChevronUp, Image,
+  Plus, Trash2, AlertCircle, Upload, Image, Pencil, Check, X,
+  ChevronLeft, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { formatCurrency, formatDate } from '../lib/utils';
 import BudgetsPage from './BudgetsPage';
 import RecurringPage from './RecurringPage';
 
-const BUDGET_LABELS = {
-  fuel: 'Fuel', vehicle_maintenance: 'Vehicle Maintenance', vehicle_supplies: 'Vehicle Supplies',
-  vehicle_rental: 'Vehicle Rental', insurance: 'Insurance', tolls_parking: 'Tolls & Parking',
-  food_meals: 'Food & Meals', technology: 'Technology', licensing: 'Licensing',
-  professional_services: 'Professional Services', other: 'Other',
-};
-
-const BUDGET_CATS = Object.keys(BUDGET_LABELS);
-
 function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 function thisMonth() { return format(new Date(), 'yyyy-MM'); }
 
-// ── Budget overview cards ────────────────────────────────────────────────────
-
-function BudgetOverview({ summary, onUpdateBudget }) {
-  const [editing, setEditing] = useState(null);
-  const [editAmt, setEditAmt] = useState('');
-
-  if (!summary || summary.length === 0) return null;
-
-  async function handleSave(category) {
-    await onUpdateBudget(category, Number(editAmt));
-    setEditing(null);
-  }
-
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-      {summary.map((r) => {
-        const pct = r.monthly_amount > 0 ? Math.min(100, Math.round(r.spent / r.monthly_amount * 100)) : 0;
-        const over = r.spent > r.monthly_amount && r.monthly_amount > 0;
-        const isEditing = editing === r.budget_category;
-        return (
-          <div key={r.budget_category} className="metal-card px-3 py-2.5">
-            <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide mb-1">
-              {BUDGET_LABELS[r.budget_category] || r.budget_category}
-            </p>
-            <div className="flex items-baseline gap-1.5 mb-1.5">
-              <span className="text-sm font-normal font-mono text-ink-300">{formatCurrency(r.spent)}</span>
-              {isEditing ? (
-                <span className="flex items-center gap-1">
-                  <span className="text-[9px] text-ink-500">of $</span>
-                  <input type="number" step="0.01" min="0" className="arc-input text-[10px] font-light font-mono py-0.5 w-16"
-                    value={editAmt} onChange={(e) => setEditAmt(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSave(r.budget_category); if (e.key === 'Escape') setEditing(null); }}
-                    autoFocus />
-                  <button onClick={() => handleSave(r.budget_category)} className="text-[9px] text-arc hover:text-ink-50">Save</button>
-                </span>
-              ) : (
-                <button onClick={() => { setEditing(r.budget_category); setEditAmt(r.monthly_amount); }}
-                  className="text-[9px] text-ink-500 hover:text-ink-200 transition-colors" title="Click to edit budget">
-                  of {formatCurrency(r.monthly_amount)}
-                </button>
-              )}
-            </div>
-            <div className="w-full h-1.5 rounded-full bg-obsidian-700 overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${over ? 'bg-error' : pct >= 80 ? 'bg-ember' : 'bg-arc'}`}
-                style={{ width: `${Math.min(pct, 100)}%` }} />
-            </div>
-            {over && <p className="text-[9px] text-error mt-0.5">{formatCurrency(r.spent - r.monthly_amount)} over</p>}
-            {r.tax_deductible && r.spent > 0 && (
-              <p className="text-[9px] text-success mt-0.5" title={r.tax_notes || ''}>
-                ~{formatCurrency(r.spent * 0.22)} est. tax deduction
-              </p>
-            )}
-            {!r.tax_deductible && r.spent > 0 && (
-              <p className="text-[9px] text-ink-600 mt-0.5" title={r.tax_notes || ''}>Not deductible</p>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Add expense form ─────────────────────────────────────────────────────────
 
-function AddExpenseForm({ onAdd }) {
+function AddExpenseForm({ onAdd, categories }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ date: todayStr(), budget_category: 'vehicle_supplies', amount: '', vendor: '', description: '' });
+  const [form, setForm] = useState({ date: todayStr(), budget_category: '', amount: '', vendor: '', description: '', is_credit: false });
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -95,7 +25,7 @@ function AddExpenseForm({ onAdd }) {
     e.preventDefault();
     setError('');
     setSaving(true);
-    const body = { ...form, amount: Number(form.amount) };
+    const body = { ...form, amount: Number(form.amount), is_credit: form.is_credit };
     const r = await api.post('/metrics/expenses', body);
     if (!r.ok) { const d = await r.json().catch(() => ({})); setError(d.detail || 'Failed'); setSaving(false); return; }
     const exp = await r.json();
@@ -111,7 +41,7 @@ function AddExpenseForm({ onAdd }) {
       });
     }
 
-    setForm({ date: todayStr(), budget_category: 'vehicle_supplies', amount: '', vendor: '', description: '' });
+    setForm({ date: todayStr(), budget_category: categories[0]?.name || '', amount: '', vendor: '', description: '', is_credit: false });
     setFile(null);
     setOpen(false);
     setSaving(false);
@@ -139,7 +69,7 @@ function AddExpenseForm({ onAdd }) {
             <label className="text-[10px] text-ink-50 font-bold uppercase tracking-wide block mb-1">Category</label>
             <select className="arc-input text-sm font-light" value={form.budget_category}
               onChange={(e) => setForm({ ...form, budget_category: e.target.value })}>
-              {BUDGET_CATS.map((c) => <option key={c} value={c}>{BUDGET_LABELS[c]}</option>)}
+              {categories.map((c) => <option key={c.name} value={c.name}>{c.label}</option>)}
             </select>
           </div>
           <div>
@@ -166,6 +96,11 @@ function AddExpenseForm({ onAdd }) {
             </label>
           </div>
         </div>
+        <div className="flex items-center gap-2 mt-1">
+          <input type="checkbox" id="is-credit" className="accent-arc"
+            checked={form.is_credit} onChange={(e) => setForm({ ...form, is_credit: e.target.checked })} />
+          <label htmlFor="is-credit" className="text-xs text-ink-300">This is a refund or credit (reduces expenses)</label>
+        </div>
         <div className="flex gap-2 justify-end">
           <button type="button" onClick={() => setOpen(false)} className="btn-ghost text-xs">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary text-xs">
@@ -177,69 +112,38 @@ function AddExpenseForm({ onAdd }) {
   );
 }
 
-// ── Expense ledger ───────────────────────────────────────────────────────────
-
-function ExpenseLedger({ expenses, onDelete, onRefresh }) {
-  const [filter, setFilter] = useState('');
-
-  const filtered = filter
-    ? expenses.filter((e) => e.budget_category === filter)
-    : expenses;
-
-  return (
-    <div className="metal-card overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-obsidian-700">
-        <h2 className="text-sm font-semibold text-ink-100">Expense Ledger</h2>
-        <select className="arc-input text-xs font-light py-1 w-36" value={filter}
-          onChange={(e) => setFilter(e.target.value)}>
-          <option value="">All categories</option>
-          {BUDGET_CATS.map((c) => <option key={c} value={c}>{BUDGET_LABELS[c]}</option>)}
-        </select>
-      </div>
-      <div className="max-h-96 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-        {filtered.length === 0 && (
-          <p className="text-xs text-ink-500 px-4 py-6 text-center">No expenses logged yet.</p>
-        )}
-        {filtered.map((e) => (
-          <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-arc/10 text-arc border border-arc/20 uppercase">
-                  {BUDGET_LABELS[e.budget_category]?.slice(0, 10) || e.budget_category}
-                </span>
-                {e.vendor && <span className="text-xs text-ink-200 truncate">{e.vendor}</span>}
-                {e.has_receipt && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
-              </div>
-              {e.description && <p className="text-[10px] text-ink-500 truncate mt-0.5">{e.description}</p>}
-            </div>
-            <span className="text-xs font-normal font-mono text-error shrink-0">{formatCurrency(e.amount)}</span>
-            <span className="text-[10px] text-ink-500 font-mono shrink-0">{formatDate(e.date)}</span>
-            <button onClick={() => onDelete(e.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors shrink-0">
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
+function monthStr(d) { return format(d, 'yyyy-MM'); }
+
 export default function FinancesPage() {
-  const [tab, setTab] = useState('reporting');
-  const [summary, setSummary] = useState([]);
+  const [tab, setTab] = useState('ledger');
+  const [month, setMonth] = useState(new Date());
   const [expenses, setExpenses] = useState([]);
+  const [recurring, setRecurring] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [editingExp, setEditingExp] = useState(null);
+  const [editExpForm, setEditExpForm] = useState({});
+
+  const ms = monthStr(month);
+  const catLabel = (name) => categories.find((c) => c.name === name)?.label || name;
 
   const load = useCallback(async () => {
-    const month = thisMonth();
-    const [sumRes, expRes] = await Promise.all([
-      api.get(`/metrics/expenses/budgets/summary?month=${month}`),
-      api.get('/metrics/expenses?limit=200'),
+    const m = monthStr(month);
+    const [y, mo] = m.split('-').map(Number);
+    const from = `${m}-01`;
+    const toDate = new Date(y, mo, 0);
+    const to = format(toDate, 'yyyy-MM-dd');
+    const [expRes, recRes, catRes] = await Promise.all([
+      api.get(`/metrics/expenses?from=${from}&to=${to}&limit=500`),
+      api.get('/metrics/expenses/recurring'),
+      api.get('/metrics/expenses/budget-categories'),
     ]);
-    if (sumRes.ok) setSummary(await sumRes.json());
     if (expRes.ok) setExpenses(await expRes.json());
-  }, []);
+    if (recRes.ok) setRecurring(await recRes.json());
+    if (catRes.ok) setCategories(await catRes.json());
+  }, [month]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -249,19 +153,48 @@ export default function FinancesPage() {
     load();
   }
 
+  async function handleMakeRecurring(e) {
+    const freq = window.prompt('Frequency? (weekly, biweekly, monthly, quarterly, annual)', 'monthly');
+    if (!freq) return;
+    const r = await api.post('/metrics/expenses/recurring', {
+      budget_category: e.budget_category, amount: e.amount,
+      frequency: freq, vendor: e.vendor || null,
+      description: e.description || null, start_date: e.date,
+    });
+    if (r.ok) load();
+  }
+
+  async function handleHardDelete(id) {
+    if (!window.confirm('Permanently delete this expense? This cannot be undone.')) return;
+    await api.delete(`/metrics/expenses/${id}/permanent`);
+    load();
+  }
+
+
+  async function handleSaveExpEdit(id) {
+    await api.put(`/metrics/expenses/${id}`, {
+      expense_date: editExpForm.date || undefined,
+      amount: Number(editExpForm.amount),
+      vendor: editExpForm.vendor || null,
+      description: editExpForm.description || null,
+    });
+    setEditingExp(null);
+    load();
+  }
+
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-3xl xl:max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Finances</h1>
-          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), 'MMMM yyyy')}</p>
+          <p className="text-xs text-ink-400 mt-0.5">{format(month, 'MMMM yyyy')}</p>
         </div>
       </div>
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-obsidian-700">
-        {[['reporting', 'Financial Reporting'], ['expenses', 'Expenses'], ['budgets', 'Budgets']].map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setTab(id)}
+        {[['ledger', 'Ledger'], ['budgets', 'Budgets'], ['expenses', 'Expenses']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => { setTab(id); load(); }}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === id ? 'border-arc text-arc' : 'border-transparent text-ink-400 hover:text-ink-200'
             }`}>
@@ -269,23 +202,6 @@ export default function FinancesPage() {
           </button>
         ))}
       </div>
-
-      {/* Financial Reporting — budget cards + full expense ledger */}
-      {tab === 'reporting' && (
-        <>
-          <BudgetOverview summary={summary} onUpdateBudget={async (cat, amt) => {
-            await api.put(`/metrics/expenses/budgets/${cat}`, { monthly_amount: amt });
-            load();
-          }} />
-          <ExpenseLedger expenses={expenses} onDelete={handleDelete} onRefresh={load} />
-          {summary.every((r) => r.spent === 0) && expenses.length === 0 && (
-            <div className="metal-card px-6 py-8 text-center">
-              <p className="text-ink-400 text-sm">No spending data yet this month.</p>
-              <p className="text-ink-500 text-xs mt-1">Log expenses or set up recurring costs to see budget tracking here.</p>
-            </div>
-          )}
-        </>
-      )}
 
       {/* Expenses — recurring section + one-time section */}
       {tab === 'expenses' && (
@@ -298,40 +214,164 @@ export default function FinancesPage() {
               <h2 className="text-sm font-semibold text-ink-100">One-Time Expenses</h2>
               <p className="text-xs text-ink-500 mt-0.5">Individual purchases not on a recurring schedule.</p>
             </div>
-            <AddExpenseForm onAdd={load} />
+            <AddExpenseForm onAdd={load} categories={categories} />
           </div>
 
           {/* One-time expense list */}
           <div className="metal-card overflow-hidden">
             <div className="max-h-80 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-              {expenses.length === 0 && (
+              {expenses.filter((e) => !e.recurring_expense_id).length === 0 && (
                 <p className="text-xs text-ink-500 px-4 py-6 text-center">No one-time expenses logged yet.</p>
               )}
-              {expenses.map((e) => (
+              {expenses.filter((e) => !e.recurring_expense_id).map((e) => {
+                const isEditing = editingExp === e.id;
+                return (
                 <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-arc/10 text-arc border border-arc/20 uppercase">
-                        {BUDGET_LABELS[e.budget_category]?.slice(0, 10) || e.budget_category}
+                  {isEditing ? (
+                    <>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <input type="text" className="arc-input text-xs font-light py-1 w-full" placeholder="Vendor"
+                          value={editExpForm.vendor} onChange={(ev) => setEditExpForm({ ...editExpForm, vendor: ev.target.value })} />
+                        <input type="text" className="arc-input text-xs font-light py-1 w-full" placeholder="Description"
+                          value={editExpForm.description} onChange={(ev) => setEditExpForm({ ...editExpForm, description: ev.target.value })} />
+                      </div>
+                      <input type="number" step="0.01" min="0" className="arc-input text-xs font-light font-mono py-1 w-20 text-right"
+                        value={editExpForm.amount} onChange={(ev) => setEditExpForm({ ...editExpForm, amount: ev.target.value })} />
+                      <input type="date" className="arc-input text-xs font-light py-1 w-28"
+                        value={editExpForm.date} onChange={(ev) => setEditExpForm({ ...editExpForm, date: ev.target.value })} />
+                      <button onClick={() => handleSaveExpEdit(e.id)} className="text-arc hover:text-ink-50 p-0.5"><Check size={12} /></button>
+                      <button onClick={() => setEditingExp(null)} className="text-ink-400 hover:text-ink-50 p-0.5"><X size={12} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-arc/10 text-arc border border-arc/20 uppercase">
+                            {catLabel(e.budget_category) || e.budget_category}
+                          </span>
+                          {e.vendor && <span className="text-xs text-ink-200 truncate">{e.vendor}</span>}
+                          {e.has_receipt && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
+                        </div>
+                        {e.description && <p className="text-[10px] text-ink-500 truncate mt-0.5">{e.description}</p>}
+                      </div>
+                      <span className={`text-xs font-normal font-mono shrink-0 ${e.is_credit ? 'text-success' : 'text-error'}`}>
+                        {e.is_credit ? '+' : '-'}{formatCurrency(e.amount)}
                       </span>
-                      {e.vendor && <span className="text-xs text-ink-200 truncate">{e.vendor}</span>}
-                      {e.has_receipt && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
-                    </div>
-                    {e.description && <p className="text-[10px] text-ink-500 truncate mt-0.5">{e.description}</p>}
-                  </div>
-                  <span className="text-xs font-normal font-mono text-error shrink-0">{formatCurrency(e.amount)}</span>
-                  <span className="text-[10px] text-ink-500 font-mono shrink-0">{formatDate(e.date)}</span>
+                      <span className="text-[10px] text-ink-500 font-mono shrink-0">{formatDate(e.date)}</span>
+                      <button onClick={() => handleMakeRecurring(e)} className="text-ink-400 hover:text-arc p-0.5" title="Make recurring">
+                        <RefreshCw size={12} />
+                      </button>
+                      <button onClick={() => {
+                        setEditingExp(e.id);
+                        setEditExpForm({ amount: e.amount, vendor: e.vendor || '', description: e.description || '', date: e.date });
+                      }} className="text-ink-400 hover:text-ink-50 p-0.5"><Pencil size={12} /></button>
+                    </>
+                  )}
                   <button onClick={() => handleDelete(e.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors shrink-0">
                     <Trash2 size={12} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </>
       )}
 
       {/* Budgets — monthly allocations */}
+      {/* Ledger — real expense rows only */}
+      {tab === 'ledger' && (() => {
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const sorted = [...expenses].sort((a, b) => a.date.localeCompare(b.date));
+        const paid = sorted.filter((e) => e.date <= todayStr);
+        const future = sorted.filter((e) => e.date > todayStr);
+        const actualSpent = paid.filter((e) => !e.is_credit).reduce((s, e) => s + e.amount, 0);
+        const actualCredits = paid.filter((e) => e.is_credit).reduce((s, e) => s + e.amount, 0);
+        const estimatedSpent = future.filter((e) => !e.is_credit).reduce((s, e) => s + e.amount, 0);
+
+        return (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setMonth(subMonths(month, 1))} className="p-1.5 rounded text-ink-400 hover:text-ink-50 hover:bg-obsidian-700 transition-colors">
+                <ChevronLeft size={16} />
+              </button>
+              <h2 className="text-sm font-semibold text-ink-100 min-w-32 text-center">{format(month, 'MMMM yyyy')}</h2>
+              <button onClick={() => setMonth(addMonths(month, 1))} className="p-1.5 rounded text-ink-400 hover:text-ink-50 hover:bg-obsidian-700 transition-colors">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="metal-card px-3 py-2.5">
+              <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide">Actual</p>
+              <p className="text-base font-normal font-mono text-error">-{formatCurrency(actualSpent - actualCredits)}</p>
+              <p className="text-[9px] text-ink-500">{paid.length} paid</p>
+            </div>
+            <div className="metal-card px-3 py-2.5">
+              <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide">Estimated</p>
+              <p className="text-base font-normal font-mono text-ember">-{formatCurrency(estimatedSpent)}</p>
+              <p className="text-[9px] text-ink-500">{future.length} upcoming</p>
+            </div>
+            <div className="metal-card px-3 py-2.5">
+              <p className="text-[10px] text-ink-50 font-bold uppercase tracking-wide">Total</p>
+              <p className="text-base font-normal font-mono text-ink-300">-{formatCurrency(actualSpent - actualCredits + estimatedSpent)}</p>
+              <p className="text-[9px] text-ink-500">{sorted.length} entries</p>
+            </div>
+          </div>
+
+          <div className="metal-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-obsidian-600">
+                  <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Date</th>
+                  <th className="text-left text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Expense</th>
+                  <th className="text-right text-[10px] text-ink-50 font-bold uppercase tracking-wide px-4 py-3">Amount</th>
+                  <th className="px-2 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((e) => {
+                  const isFuture = e.date > todayStr;
+                  return (
+                  <tr key={e.id} className={`border-b border-obsidian-700/30 hover:bg-obsidian-800/30 transition-colors ${isFuture ? 'opacity-40' : ''}`}>
+                    <td className="px-4 py-3 text-xs font-mono text-ink-400 whitespace-nowrap">
+                      {format(new Date(e.date + 'T00:00'), 'MMM d')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-arc/10 text-arc border border-arc/20 uppercase">
+                          {catLabel(e.budget_category) || e.budget_category}
+                        </span>
+                        {e.vendor && <span className="text-xs text-ink-200 truncate">{e.vendor}</span>}
+                        {e.has_receipt && <Image size={10} className="text-success shrink-0" title="Receipt attached" />}
+                      </div>
+                      {e.description && <p className="text-[10px] text-ink-500 truncate mt-0.5">{e.description}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`font-normal font-mono ${e.is_credit ? 'text-success' : 'text-error'}`}>
+                        {e.is_credit ? '+' : '-'}{formatCurrency(e.amount)}
+                      </span>
+                    </td>
+                    <td className="px-2 py-3">
+                      <button onClick={() => handleHardDelete(e.id)} className="text-ink-400 hover:text-error p-0.5 transition-colors" title="Delete">
+                        <Trash2 size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {sorted.length === 0 && (
+              <p className="text-xs text-ink-500 px-4 py-6 text-center">No expenses for {format(month, 'MMMM yyyy')}.</p>
+            )}
+          </div>
+        </>
+        );
+      })()}
+
       {tab === 'budgets' && <BudgetsPage />}
     </div>
   );

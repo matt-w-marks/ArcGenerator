@@ -12,7 +12,7 @@ from audit import audit, diff, snapshot, get_user_id
 from database import get_db
 from models import (
     Vehicle, MaintenanceRecord, RecurringExpense,
-    DailyBlockLog, DailyExpense, BusinessExpense,
+    DailyBlockLog, BusinessExpense,
 )
 from role_guard import require_role
 

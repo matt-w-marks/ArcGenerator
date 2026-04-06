@@ -6,7 +6,7 @@
 # Replace all <placeholder> values before deploying.
 
 location: eastus
-name: cae-roadmap-prod
+name: cae-arcgen-prod
 type: Microsoft.App/managedEnvironments
 
 properties:

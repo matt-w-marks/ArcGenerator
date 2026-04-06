@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, joinedload
 
+from audit import audit, snapshot, get_user_id
 from database import get_db
 from role_guard import require_role
 from models.calendar_entry import CalendarEntry
@@ -34,22 +35,26 @@ class ScheduleUpdate(BaseModel):
 
 
 class BlockCreate(BaseModel):
-    hour_start:    float = Field(ge=0, le=25.5)
-    hour_end:      float = Field(ge=0.5, le=26)
-    block_type:    str   = Field(pattern="^(zone|event|job|rest|note|checklist)$")
-    zone_id:       UUID | None = None
-    label:         str   = Field(min_length=1, max_length=128)
-    notes:         str | None = None
-    sort_order:    int   = 0
-    gross_revenue: float = Field(default=0, ge=0)
-    platform_ids:  list[UUID] = []
+    hour_start:       float = Field(ge=0, le=25.5)
+    hour_end:         float = Field(ge=0.5, le=26)
+    block_type:       str   = Field(pattern="^(zone|event|job|role|engagement|venture|rest|note|checklist)$")
+    zone_id:          UUID | None = None
+    income_stream_id: UUID | None = None
+    checklist_id:     UUID | None = None
+    label:            str   = Field(min_length=1, max_length=128)
+    notes:            str | None = None
+    sort_order:       int   = 0
+    gross_revenue:    float = Field(default=0, ge=0)
+    platform_ids:     list[UUID] = []
 
 
 class BlockUpdate(BaseModel):
     hour_start:    float | None = Field(default=None, ge=0, le=25.5)
     hour_end:      float | None = Field(default=None, ge=0.5, le=26)
-    block_type:    str | None = Field(default=None, pattern="^(zone|event|job|rest|note|checklist)$")
+    block_type:    str | None = Field(default=None, pattern="^(zone|event|job|role|engagement|venture|rest|note|checklist)$")
     zone_id:       UUID | None = None
+    income_stream_id: UUID | None = None
+    checklist_id:  UUID | None = None
     label:         str | None = Field(default=None, max_length=128)
     notes:         str | None = None
     sort_order:    int | None = None
@@ -257,10 +262,23 @@ def update_block(block_id: UUID, body: BlockUpdate, db: Session = Depends(get_db
 
 
 @router.delete("/blocks/{block_id}", status_code=204, dependencies=[require_role('ADMIN')])
-def delete_block(block_id: UUID, db: Session = Depends(get_db)):
+def delete_block(block_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     block = db.get(ScheduleBlock, block_id)
     if block is None:
         raise HTTPException(status_code=404, detail="Block not found")
+    audit(db, "schedule_blocks", block.id, "DELETE", user_id, snapshot({
+        "schedule_id": str(block.schedule_id),
+        "label": block.label,
+        "block_type": block.block_type,
+        "hour_start": float(block.hour_start),
+        "hour_end": float(block.hour_end),
+        "zone_id": str(block.zone_id) if block.zone_id else None,
+        "income_stream_id": str(block.income_stream_id) if block.income_stream_id else None,
+        "checklist_id": str(block.checklist_id) if block.checklist_id else None,
+        "gross_revenue": float(block.gross_revenue),
+        "platform_ids": [str(p) for p in (block.platform_ids or [])],
+        "notes": block.notes,
+    }))
     db.delete(block)
     db.commit()
 

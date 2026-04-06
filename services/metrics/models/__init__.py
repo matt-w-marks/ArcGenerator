@@ -4,13 +4,15 @@ from .budget_category import BudgetCategory
 from .budget_item import BudgetItem
 from .business_expense import BusinessExpense
 from .calendar_entry import CalendarEntry
+from .income_entry import IncomeEntry
+from .income_stream import IncomeStream
 from .recurring_expense import RecurringExpense
 from .vehicle import Vehicle
 from .checklist import Checklist
 from .checklist_item import ChecklistItem
 from .checklist_log import ChecklistLog
+from .checklist_log_photo import ChecklistLogPhoto
 from .daily_block_log import DailyBlockLog
-from .daily_expense import DailyExpense
 from .daily_platform_earning import DailyPlatformEarning
 from .driving_session import DrivingSession
 from .event_zone import EventZone
@@ -35,12 +37,14 @@ __all__ = [
     "Checklist",
     "ChecklistItem",
     "ChecklistLog",
+    "ChecklistLogPhoto",
     "DailyBlockLog",
-    "DailyExpense",
     "DailyPlatformEarning",
     "DrivingSession",
     "EventZone",
     "FinancialSnapshot",
+    "IncomeEntry",
+    "IncomeStream",
     "JobActivity",
     "MaintenanceRecord",
     "Platform",

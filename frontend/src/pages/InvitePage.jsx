@@ -7,6 +7,7 @@ export default function InvitePage() {
   const navigate = useNavigate();
   const [invite, setInvite] = useState(null);
   const [error, setError] = useState('');
+  const [errors, setErrors] = useState([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,7 @@ export default function InvitePage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setErrors([]);
     const r = await fetch(`/auth/invites/${token}/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,7 +43,11 @@ export default function InvitePage() {
       setTimeout(() => navigate('/login'), 2000);
     } else {
       const body = await r.json().catch(() => ({}));
-      setError(body.error || 'Failed to create account');
+      if (Array.isArray(body.errors) && body.errors.length) {
+        setErrors(body.errors);
+      } else {
+        setError(body.error || 'Failed to create account');
+      }
     }
   }
 
@@ -97,10 +103,16 @@ export default function InvitePage() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-ink-50 uppercase tracking-wider block mb-1.5" htmlFor="invite-password">Password</label>
-                  <input id="invite-password" type="password" required minLength={8} className="arc-input font-light"
-                    placeholder="Min 8 characters" value={password}
+                  <input id="invite-password" type="password" required minLength={12} className="arc-input font-light"
+                    placeholder="Min 12 characters" value={password}
                     onChange={(e) => setPassword(e.target.value)} />
+                  <p className="text-[9px] text-ink-500 mt-1">At least 12 characters. Cannot be a previously breached password.</p>
                 </div>
+                {errors.length > 0 && (
+                  <ul className="text-xs text-error list-disc list-inside space-y-0.5">
+                    {errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                )}
                 <button type="submit" className="btn-primary w-full mt-2">Create Account</button>
               </form>
             </>

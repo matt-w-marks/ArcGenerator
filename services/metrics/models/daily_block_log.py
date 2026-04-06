@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, time
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, Text, Time, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Time, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,20 +10,32 @@ from .base import Base
 
 class DailyBlockLog(Base):
     __tablename__ = "daily_block_logs"
-    __table_args__ = (
-        UniqueConstraint("block_id", "entry_date", name="uq_daily_block_log"),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    block_id: Mapped[uuid.UUID] = mapped_column(
+    # Nullable for ad-hoc blocks not tied to a schedule
+    block_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("schedule_blocks.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
-    entry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+
+    # Ad-hoc block fields (used when block_id is null)
+    block_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    income_stream_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("income_streams.id", ondelete="SET NULL"), nullable=True
+    )
+    checklist_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("checklists.id", ondelete="SET NULL"), nullable=True
+    )
+    hour_start: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
+    hour_end: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
+
+    # Actual logged data
     actual_gross: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     trip_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     actual_start: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -47,10 +59,6 @@ class DailyBlockLog(Base):
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     block: Mapped["ScheduleBlock"] = relationship("ScheduleBlock", lazy="select")  # type: ignore[name-defined]
-    expenses: Mapped[list["DailyExpense"]] = relationship(  # type: ignore[name-defined]
-        "DailyExpense", back_populates="daily_block_log",
-        cascade="all, delete-orphan", order_by="DailyExpense.created_at",
-    )
     platform_earnings: Mapped[list["DailyPlatformEarning"]] = relationship(  # type: ignore[name-defined]
         "DailyPlatformEarning", back_populates="daily_block_log",
         cascade="all, delete-orphan",

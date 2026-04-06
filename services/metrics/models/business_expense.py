@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, LargeBinary, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,12 +19,22 @@ class BusinessExpense(Base):
     description: Mapped[str | None] = mapped_column(String(256), nullable=True)
     receipt_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     receipt_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_credit: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     vehicle_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    income_stream_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("income_streams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     budget_item_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("budget_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    recurring_expense_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("recurring_expenses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    daily_block_log_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("daily_block_logs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

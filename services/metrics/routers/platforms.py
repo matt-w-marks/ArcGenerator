@@ -40,7 +40,7 @@ class PlatformResponse(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[PlatformResponse], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("", response_model=list[PlatformResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_platforms(include_inactive: bool = False, db: Session = Depends(get_db)):
     q = db.query(Platform)
     if not include_inactive:

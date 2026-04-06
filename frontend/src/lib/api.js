@@ -84,11 +84,31 @@ export const api = {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Login failed');
+      const err = new Error(data.error || 'Login failed');
+      err.status = res.status;
+      err.retryAfter = data.retryAfter;
+      throw err;
     }
     const data = await res.json();
     saveTokens(data.accessToken, data.refreshToken);
     return data;
+  },
+
+  /**
+   * Try to exchange a Cloudflare Access JWT (already in the request via the
+   * CF proxy) for our normal access+refresh tokens. Returns true on success.
+   * Silent — used on app mount to auto-login Cloudflare-authenticated users.
+   */
+  async bootstrapSso() {
+    try {
+      const res = await fetch('/auth/sso/bootstrap', { method: 'POST' });
+      if (!res.ok) return false;
+      const data = await res.json();
+      saveTokens(data.accessToken, data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   async logout() {

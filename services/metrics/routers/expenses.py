@@ -6,12 +6,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func as sqf
+from sqlalchemy import case, func as sqf
 from sqlalchemy.orm import Session
 
 from audit import audit, diff, snapshot, get_user_id
 from database import get_db
-from models import BudgetCategory, BudgetItem, BusinessExpense, DailyBlockLog, DailyExpense, RecurringExpense
+from models import BudgetCategory, BudgetItem, BusinessExpense, DailyBlockLog, RecurringExpense
 from role_guard import require_role
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -42,6 +42,7 @@ class ExpenseCreate(BaseModel):
     description: str | None = Field(default=None, max_length=256)
     vehicle_id: UUID | None = None
     notes: str | None = None
+    is_credit: bool = False
 
 class ExpenseUpdate(BaseModel):
     expense_date: date | None = None
@@ -50,15 +51,19 @@ class ExpenseUpdate(BaseModel):
     vendor: str | None = None
     description: str | None = None
     notes: str | None = None
+    is_credit: bool | None = None
+    budget_item_id: UUID | None = None
 
 class ExpenseResponse(BaseModel):
     id: UUID
     date: date
     budget_category: str
     amount: float
+    is_credit: bool
     vendor: str | None
     description: str | None
     has_receipt: bool
+    recurring_expense_id: UUID | None
     notes: str | None
     created_at: str
 
@@ -116,7 +121,7 @@ class BudgetSummaryRow(BaseModel):
 
 # ── Expense CRUD ──────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[ExpenseResponse], dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("", response_model=list[ExpenseResponse], dependencies=[require_role('ADMIN', 'OPERATOR')])
 def list_expenses(
     db: Session = Depends(get_db),
     from_date: date | None = Query(default=None, alias="from"),
@@ -181,6 +186,22 @@ def delete_expense(expense_id: UUID, db: Session = Depends(get_db), user_id: UUI
     }))
     db.commit()
 
+@router.delete("/{expense_id}/permanent", status_code=204, dependencies=[require_role('ADMIN')])
+def delete_expense_permanent(expense_id: UUID, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    exp = db.get(BusinessExpense, expense_id)
+    if exp is None:
+        raise HTTPException(404, "Expense not found")
+    if exp.budget_item_id:
+        bi = db.get(BudgetItem, exp.budget_item_id)
+        if bi:
+            audit(db, "budget_items", bi.id, "DELETE", user_id, snapshot({"name": bi.name, "month": bi.month}))
+            db.delete(bi)
+    audit(db, "business_expenses", exp.id, "DELETE", user_id, snapshot({
+        "date": str(exp.date), "budget_category": exp.budget_category, "amount": float(exp.amount), "permanent": True,
+    }))
+    db.delete(exp)
+    db.commit()
+
 
 # ── Receipt upload ────────────────────────────────────────────────────────────
 
@@ -205,7 +226,7 @@ async def upload_receipt(expense_id: UUID, file: UploadFile = File(...), db: Ses
     db.refresh(exp)
     return _exp_response(exp)
 
-@router.get("/{expense_id}/receipt", dependencies=[require_role('ADMIN', 'OPERATOR', 'VIEWER')])
+@router.get("/{expense_id}/receipt", dependencies=[require_role('ADMIN', 'OPERATOR')])
 def get_receipt(expense_id: UUID, db: Session = Depends(get_db)):
     exp = db.get(BusinessExpense, expense_id)
     if exp is None or exp.deleted_at is not None or not exp.receipt_data:
@@ -220,7 +241,7 @@ def _cat_response(c: BudgetCategory) -> BudgetCategoryResponse:
         tax_deductible=c.tax_deductible, tax_notes=c.tax_notes,
         sort_order=c.sort_order, active=c.active)
 
-@router.get("/budget-categories", response_model=list[BudgetCategoryResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
+@router.get("/budget-categories", response_model=list[BudgetCategoryResponse], dependencies=[require_role("ADMIN", "OPERATOR")])
 def list_categories(db: Session = Depends(get_db), include_inactive: bool = Query(default=False)):
     q = db.query(BudgetCategory)
     if not include_inactive:
@@ -284,6 +305,7 @@ class BudgetItemResponse(BaseModel):
     recurring_expense_id: UUID | None
     vehicle_id: UUID | None
     tax_deductible: bool
+    is_archived: bool
     notes: str | None
 
 def _item_response(item: BudgetItem, actual: float, cm: dict) -> BudgetItemResponse:
@@ -299,6 +321,7 @@ def _item_response(item: BudgetItem, actual: float, cm: dict) -> BudgetItemRespo
         recurring_expense_id=item.recurring_expense_id,
         vehicle_id=item.vehicle_id,
         tax_deductible=c.tax_deductible if c else False,
+        is_archived=item.deleted_at is not None,
         notes=item.notes,
     )
 
@@ -309,9 +332,14 @@ def _actuals_for_month(db: Session, month: str) -> dict:
     month_start = d(year, mon, 1)
     month_end = d(year, mon + 1, 1) if mon < 12 else d(year + 1, 1, 1)
 
+    # Signed amount: credits subtract, expenses add
+    signed_amt = sqf.sum(
+        case((BusinessExpense.is_credit.is_(True), -BusinessExpense.amount), else_=BusinessExpense.amount)
+    )
+
     # By budget_item_id (direct link)
     by_item = dict(
-        db.query(BusinessExpense.budget_item_id, sqf.sum(BusinessExpense.amount))
+        db.query(BusinessExpense.budget_item_id, signed_amt)
         .filter(BusinessExpense.budget_item_id.isnot(None),
                 BusinessExpense.date >= month_start, BusinessExpense.date < month_end,
                 BusinessExpense.deleted_at.is_(None))
@@ -320,41 +348,41 @@ def _actuals_for_month(db: Session, month: str) -> dict:
 
     # By category (for items without direct link)
     by_cat = dict(
-        db.query(BusinessExpense.budget_category, sqf.sum(BusinessExpense.amount))
+        db.query(BusinessExpense.budget_category, signed_amt)
         .filter(BusinessExpense.budget_item_id.is_(None),
                 BusinessExpense.date >= month_start, BusinessExpense.date < month_end,
                 BusinessExpense.deleted_at.is_(None))
         .group_by(BusinessExpense.budget_category).all()
     )
 
-    # Daily expenses mapped to budget categories
-    daily = (
-        db.query(DailyExpense.category, sqf.sum(DailyExpense.amount))
-        .join(DailyBlockLog, DailyBlockLog.id == DailyExpense.daily_block_log_id)
-        .filter(DailyBlockLog.entry_date >= month_start, DailyBlockLog.entry_date < month_end,
-                DailyBlockLog.deleted_at.is_(None), DailyExpense.deleted_at.is_(None))
-        .group_by(DailyExpense.category).all()
-    )
-    for cat, amt in daily:
-        budget_cat = DAILY_TO_BUDGET.get(cat, "other")
-        by_cat[budget_cat] = by_cat.get(budget_cat, 0) + float(amt)
-
     return {"by_item": {k: float(v) for k, v in by_item.items()}, "by_cat": {k: float(v) for k, v in by_cat.items()}}
 
-@router.get("/budget-items", response_model=list[BudgetItemResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
-def list_budget_items(db: Session = Depends(get_db), month: str = Query(default=None)):
-    if not month:
-        month = date.today().strftime("%Y-%m")
-    items = db.query(BudgetItem).filter(BudgetItem.month == month).order_by(BudgetItem.expected_date, BudgetItem.name).all()
+@router.get("/budget-items", response_model=list[BudgetItemResponse], dependencies=[require_role("ADMIN", "OPERATOR")])
+def list_budget_items(
+    db: Session = Depends(get_db),
+    month: str = Query(default=None),
+    all_months: bool = Query(default=False),
+    include_archived: bool = Query(default=False),
+):
+    q = db.query(BudgetItem)
+    if not include_archived:
+        q = q.filter(BudgetItem.deleted_at.is_(None))
+    if not all_months:
+        if not month:
+            month = date.today().strftime("%Y-%m")
+        q = q.filter(BudgetItem.month == month)
+    items = q.order_by(BudgetItem.month.desc(), BudgetItem.expected_date, BudgetItem.name).all()
     cm = _cat_map(db)
-    actuals = _actuals_for_month(db, month)
+    # Build actuals per month encountered
+    actuals_cache = {}
     results = []
     for item in items:
+        if item.month not in actuals_cache:
+            actuals_cache[item.month] = _actuals_for_month(db, item.month)
+        actuals = actuals_cache[item.month]
         if item.recurring_expense_id:
-            # Recurring = the planned amount IS the actual (fixed known cost)
             actual = float(item.planned_amount)
         else:
-            # One-time: check linked expenses, then fall back to category match
             actual = actuals["by_item"].get(item.id, 0)
             if actual == 0:
                 actual = actuals["by_cat"].get(item.budget_category, 0)
@@ -384,17 +412,36 @@ def create_budget_item(body: BudgetItemCreate, db: Session = Depends(get_db), us
     db.refresh(item)
     return _item_response(item, 0, _cat_map(db))
 
+class BudgetItemUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    budget_category: str | None = None
+    planned_amount: float | None = Field(default=None, ge=0)
+    expected_date: date | None = None
+    month: str | None = Field(default=None, pattern="^\\d{4}-\\d{2}$")
+    notes: str | None = None
+
 @router.put("/budget-items/{item_id}", response_model=BudgetItemResponse, dependencies=[require_role("ADMIN")])
-def update_budget_item(item_id: UUID, body: BudgetUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+def update_budget_item(item_id: UUID, body: BudgetItemUpdate, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
     item = db.get(BudgetItem, item_id)
     if item is None:
         raise HTTPException(404, "Budget item not found")
-    old = float(item.planned_amount)
-    item.planned_amount = body.monthly_amount
-    if body.notes is not None:
-        item.notes = body.notes
-    if old != body.monthly_amount:
-        audit(db, "budget_items", item.id, "UPDATE", user_id, {"planned_amount": {"old": old, "new": body.monthly_amount}})
+    old = {"name": item.name, "planned_amount": float(item.planned_amount), "month": item.month,
+           "expected_date": str(item.expected_date) if item.expected_date else None, "budget_category": item.budget_category}
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(item, field, value)
+    new = {"name": item.name, "planned_amount": float(item.planned_amount), "month": item.month,
+           "expected_date": str(item.expected_date) if item.expected_date else None, "budget_category": item.budget_category}
+    changes = diff(old, new)
+    if changes:
+        audit(db, "budget_items", item.id, "UPDATE", user_id, changes)
+    # Sync linked expense
+    linked = db.query(BusinessExpense).filter(BusinessExpense.budget_item_id == item.id).first()
+    if linked:
+        linked.amount = item.planned_amount
+        linked.budget_category = item.budget_category
+        linked.vendor = item.name
+        if item.expected_date:
+            linked.date = item.expected_date
     db.commit()
     db.refresh(item)
     return _item_response(item, 0, _cat_map(db))
@@ -404,55 +451,48 @@ def delete_budget_item(item_id: UUID, db: Session = Depends(get_db), user_id: UU
     item = db.get(BudgetItem, item_id)
     if item is None:
         raise HTTPException(404, "Budget item not found")
+    # Unlink any expenses pointing to this budget item (don't delete them)
+    db.query(BusinessExpense).filter(BusinessExpense.budget_item_id == item_id).update({"budget_item_id": None})
     audit(db, "budget_items", item.id, "DELETE", user_id, snapshot({"name": item.name, "month": item.month}))
     db.delete(item)
     db.commit()
 
 @router.post("/budget-items/populate", dependencies=[require_role("ADMIN")])
 def populate_from_recurring(db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id), month: str = Query(...)):
-    """Auto-populate budget items from active recurring expenses — one item per occurrence with specific dates."""
-    from calendar import monthrange
-    from datetime import timedelta
+    """Auto-populate budget items from active recurring expenses — one item per recurring expense."""
     year, mon = map(int, month.split("-"))
     month_start = date(year, mon, 1)
-    month_end = date(year, mon, monthrange(year, mon)[1])
 
     recs = db.query(RecurringExpense).filter(
         RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None),
-        RecurringExpense.start_date <= month_end,
     ).all()
 
-    # Check existing items by (name, expected_date) to avoid duplicates
-    existing = {(i.name, i.expected_date) for i in db.query(BudgetItem).filter(BudgetItem.month == month).all()}
+    # Check existing by recurring_expense_id to avoid duplicates
+    existing_rec_ids = {i.recurring_expense_id for i in
+        db.query(BudgetItem).filter(BudgetItem.month == month, BudgetItem.recurring_expense_id.isnot(None)).all()}
     count = 0
     for rec in recs:
+        if rec.id in existing_rec_ids:
+            continue
         name = rec.vendor or rec.description or rec.budget_category
-        current = rec.start_date
-        end = rec.end_date if rec.end_date and rec.end_date < month_end else month_end
-
-        while current <= end:
-            if current >= month_start and (name, current) not in existing:
-                db.add(BudgetItem(
-                    month=month, expected_date=current, name=name,
-                    budget_category=rec.budget_category, planned_amount=float(rec.amount),
-                    frequency_note=rec.frequency,
-                    recurring_expense_id=rec.id, vehicle_id=rec.vehicle_id,
-                ))
-                existing.add((name, current))
-                count += 1
-            # Advance
-            if rec.frequency == "weekly":
-                current += timedelta(weeks=1)
-            elif rec.frequency == "biweekly":
-                current += timedelta(weeks=2)
-            elif rec.frequency == "monthly":
-                current = _add_months(current, 1)
-            elif rec.frequency == "quarterly":
-                current = _add_months(current, 3)
-            elif rec.frequency == "annual":
-                current = _add_months(current, 12)
-            else:
-                break
+        # Create budget item
+        bi = BudgetItem(
+            month=month, expected_date=month_start, name=name,
+            budget_category=rec.budget_category,
+            planned_amount=float(rec.amount),
+            frequency_note=rec.frequency,
+            recurring_expense_id=rec.id, vehicle_id=rec.vehicle_id,
+        )
+        db.add(bi)
+        db.flush()
+        # Create matching expense row
+        db.add(BusinessExpense(
+            date=month_start, budget_category=rec.budget_category,
+            amount=float(rec.amount), vendor=rec.vendor,
+            description=rec.description, vehicle_id=rec.vehicle_id,
+            budget_item_id=bi.id, recurring_expense_id=rec.id,
+        ))
+        count += 1
     if count > 0:
         db.commit()
     return {"populated": count, "month": month}
@@ -476,10 +516,40 @@ def copy_budget(db: Session = Depends(get_db), user_id: UUID | None = Depends(ge
     db.commit()
     return {"copied": len(source), "from_month": from_month, "to_month": to_month}
 
-@router.get("/budget-items/months", dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
-def list_budget_months(db: Session = Depends(get_db)):
-    rows = db.query(BudgetItem.month).distinct().order_by(BudgetItem.month).all()
-    return [r[0] for r in rows]
+@router.get("/budget-items/months", dependencies=[require_role("ADMIN", "OPERATOR")])
+def list_budget_months(db: Session = Depends(get_db), detail: bool = Query(default=False)):
+    if not detail:
+        rows = db.query(BudgetItem.month).filter(BudgetItem.deleted_at.is_(None)).distinct().order_by(BudgetItem.month).all()
+        return [r[0] for r in rows]
+    # Detailed: return per-month summaries
+    from sqlalchemy import func as f
+    rows = (
+        db.query(
+            BudgetItem.month,
+            f.count(BudgetItem.id).label("item_count"),
+            f.sum(BudgetItem.planned_amount).label("total_planned"),
+            f.count(BudgetItem.id).filter(BudgetItem.deleted_at.isnot(None)).label("archived_count"),
+        )
+        .group_by(BudgetItem.month)
+        .order_by(BudgetItem.month.desc())
+        .all()
+    )
+    return [
+        {"month": r.month, "item_count": r.item_count - r.archived_count,
+         "archived_count": r.archived_count,
+         "total_planned": round(float(r.total_planned or 0), 2)}
+        for r in rows
+    ]
+
+@router.delete("/budget-items/month/{month}", status_code=204, dependencies=[require_role("ADMIN")])
+def delete_budget_month(month: str, db: Session = Depends(get_db), user_id: UUID | None = Depends(get_user_id)):
+    items = db.query(BudgetItem).filter(BudgetItem.month == month).all()
+    if not items:
+        raise HTTPException(404, f"No budget found for {month}")
+    for item in items:
+        audit(db, "budget_items", item.id, "DELETE", user_id, snapshot({"name": item.name, "month": item.month}))
+        db.delete(item)
+    db.commit()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -487,8 +557,11 @@ def list_budget_months(db: Session = Depends(get_db)):
 def _exp_response(e: BusinessExpense) -> ExpenseResponse:
     return ExpenseResponse(
         id=e.id, date=e.date, budget_category=e.budget_category,
-        amount=float(e.amount), vendor=e.vendor, description=e.description,
-        has_receipt=e.receipt_data is not None, notes=e.notes,
+        amount=float(e.amount), is_credit=e.is_credit,
+        vendor=e.vendor, description=e.description,
+        has_receipt=e.receipt_data is not None,
+        recurring_expense_id=e.recurring_expense_id,
+        notes=e.notes,
         created_at=e.created_at.isoformat(),
     )
 
@@ -512,6 +585,7 @@ class RecurringExpenseUpdate(BaseModel):
     frequency: str | None = None
     vendor: str | None = None
     description: str | None = None
+    start_date: date | None = None
     end_date: date | None = None
     active: bool | None = None
 
@@ -530,16 +604,15 @@ class RecurringExpenseResponse(BaseModel):
     created_at: str
 
 def _recurring_response(r: RecurringExpense) -> RecurringExpenseResponse:
-    mult = FREQ_TO_MONTHLY.get(r.frequency, 1.0)
     return RecurringExpenseResponse(
         id=r.id, budget_category=r.budget_category, amount=float(r.amount),
         frequency=r.frequency, vendor=r.vendor, description=r.description,
         start_date=r.start_date, end_date=r.end_date, active=r.active,
-        last_generated=r.last_generated, monthly_projection=round(float(r.amount) * mult, 2),
+        last_generated=r.last_generated, monthly_projection=float(r.amount),
         created_at=r.created_at.isoformat(),
     )
 
-@router.get("/recurring", response_model=list[RecurringExpenseResponse], dependencies=[require_role("ADMIN", "OPERATOR", "VIEWER")])
+@router.get("/recurring", response_model=list[RecurringExpenseResponse], dependencies=[require_role("ADMIN", "OPERATOR")])
 def list_recurring(db: Session = Depends(get_db)):
     recs = db.query(RecurringExpense).filter(RecurringExpense.deleted_at.is_(None)).order_by(RecurringExpense.budget_category).all()
     return [_recurring_response(r) for r in recs]
@@ -602,17 +675,106 @@ def _add_months(d: date, months: int) -> date:
 # ── Projection helpers (used by reports) ──────────────────────────────────────
 
 def get_projected_monthly_cost(db: Session) -> float:
+    """Sum of all active recurring expense amounts at face value. No frequency multipliers."""
     recs = db.query(RecurringExpense).filter(
         RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None)).all()
-    return round(sum(float(r.amount) * FREQ_TO_MONTHLY.get(r.frequency, 1.0) for r in recs), 2)
+    return round(sum(float(r.amount) for r in recs), 2)
 
 def get_projected_weekly_vehicle_cost(db: Session) -> float:
     recs = db.query(RecurringExpense).filter(
         RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None),
         RecurringExpense.budget_category == "vehicle_rental").all()
-    total = 0.0
-    for r in recs:
-        if r.frequency == "weekly": total += float(r.amount)
-        elif r.frequency == "biweekly": total += float(r.amount) / 2
-        elif r.frequency == "monthly": total += float(r.amount) / 4.3
-    return round(total, 2)
+    return round(sum(float(r.amount) for r in recs), 2)
+
+
+# ── Recurring expense materialization ────────────────────────────────────────
+
+def materialize_recurring_expenses(db: Session) -> int:
+    """Create BusinessExpense rows for all due recurring expenses up to today.
+    Returns count of new rows created. Safe to call multiple times (dedup by recurring_expense_id + date)."""
+    from datetime import timedelta
+    today = date.today()
+
+    recs = db.query(RecurringExpense).filter(
+        RecurringExpense.active.is_(True), RecurringExpense.deleted_at.is_(None)
+    ).all()
+
+    # Build set of existing (recurring_expense_id, date) pairs for dedup — include deleted to avoid re-creating
+    existing = set(
+        db.query(BusinessExpense.recurring_expense_id, BusinessExpense.date)
+        .filter(BusinessExpense.recurring_expense_id.isnot(None))
+        .all()
+    )
+
+    count = 0
+    for rec in recs:
+        cursor = rec.start_date
+        end = rec.end_date if rec.end_date and rec.end_date < today else today
+
+        while cursor <= end:
+            if (rec.id, cursor) not in existing:
+                db.add(BusinessExpense(
+                    date=cursor, budget_category=rec.budget_category,
+                    amount=float(rec.amount), vendor=rec.vendor,
+                    description=rec.description, vehicle_id=rec.vehicle_id,
+                    recurring_expense_id=rec.id,
+                ))
+                existing.add((rec.id, cursor))
+                count += 1
+
+            # Advance by frequency
+            if rec.frequency == "weekly":
+                cursor += timedelta(weeks=1)
+            elif rec.frequency == "biweekly":
+                cursor += timedelta(weeks=2)
+            elif rec.frequency == "monthly":
+                cursor = _add_months(cursor, 1)
+            elif rec.frequency == "quarterly":
+                cursor = _add_months(cursor, 3)
+            elif rec.frequency == "annual":
+                cursor = _add_months(cursor, 12)
+            else:
+                break
+
+        rec.last_generated = today
+
+    if count > 0:
+        db.commit()
+    return count
+
+
+@router.post("/recurring/skip-occurrence", status_code=204, dependencies=[require_role("ADMIN")])
+def skip_recurring_occurrence(
+    recurring_expense_id: UUID = Query(...),
+    occurrence_date: date = Query(..., alias="date"),
+    db: Session = Depends(get_db),
+    user_id: UUID | None = Depends(get_user_id),
+):
+    """Create a soft-deleted expense row for this occurrence so it won't be materialized."""
+    existing = db.query(BusinessExpense).filter(
+        BusinessExpense.recurring_expense_id == recurring_expense_id,
+        BusinessExpense.date == occurrence_date,
+    ).first()
+    if existing:
+        # Already exists — just soft delete it
+        existing.deleted_at = datetime.now(timezone.utc)
+        existing.deleted_by = user_id
+    else:
+        rec = db.get(RecurringExpense, recurring_expense_id)
+        if rec is None:
+            raise HTTPException(404, "Recurring expense not found")
+        exp = BusinessExpense(
+            date=occurrence_date, budget_category=rec.budget_category,
+            amount=float(rec.amount), vendor=rec.vendor, description=rec.description,
+            vehicle_id=rec.vehicle_id, recurring_expense_id=rec.id,
+            deleted_at=datetime.now(timezone.utc), deleted_by=user_id,
+        )
+        db.add(exp)
+    audit(db, "business_expenses", recurring_expense_id, "DELETE", user_id,
+          snapshot({"recurring_expense_id": str(recurring_expense_id), "date": str(occurrence_date), "skipped": True}))
+    db.commit()
+
+@router.post("/recurring/materialize", dependencies=[require_role("ADMIN")])
+def materialize_endpoint(db: Session = Depends(get_db)):
+    count = materialize_recurring_expenses(db)
+    return {"created": count}

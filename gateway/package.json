@@ -1,7 +1,7 @@
 {
-  "name": "roadmap-gateway",
+  "name": "arcgenerator-gateway",
   "version": "0.1.0",
-  "description": "RoadMap Dashboard API Gateway",
+  "description": "ArcGenerator API Gateway",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

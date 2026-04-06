@@ -30,6 +30,18 @@ class ScheduleBlock(Base):
         ForeignKey("zones.id", ondelete="SET NULL"),
         nullable=True,
     )
+    income_stream_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("income_streams.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    checklist_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("checklists.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
