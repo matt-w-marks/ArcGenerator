@@ -8,6 +8,10 @@ const cloudflareAccess = require('./middleware/cloudflareAccess');
 
 const app = express();
 
+// Trust the immediate upstream proxy (gateway) so express-rate-limit and
+// req.ip work correctly with X-Forwarded-For headers from the gateway.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(express.json());
 
