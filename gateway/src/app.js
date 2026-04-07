@@ -69,7 +69,6 @@ app.use(
   createProxyMiddleware({
     target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
     changeOrigin: true,
-    pathRewrite: (path) => `/auth/users${path}`,
     on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
   })
 );
@@ -81,7 +80,6 @@ app.use(
   createProxyMiddleware({
     target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
     changeOrigin: true,
-    pathRewrite: (path) => `/auth/profile${path}`,
     on: { proxyReq: (proxyReq, req) => { injectUserHeaders(proxyReq, req); fixRequestBody(proxyReq, req); } },
   })
 );
@@ -95,7 +93,6 @@ app.use(
   createProxyMiddleware({
     target: process.env.AUTH_SERVICE_URL || 'http://auth:3001',
     changeOrigin: true,
-    pathRewrite: (path) => `/auth${path}`,
     on: { proxyReq: fixRequestBody },
   })
 );
