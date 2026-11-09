@@ -12,6 +12,10 @@ A professional driver operations platform (PWA). Manages schedules, daily shift 
 | Stages Touched | ArcForgeFabricator (output) |
 | Role Type | Consumer — standalone product built using factory standards |
 
+## Pending Alignment
+
+- **Factory logging is off-standard. Fix it first the next time this project is worked on** (owner decision 2026-11-09, ArcTrader ADO Issue #483). `db/init/01_factory_logs.sh` and the `services/export`, `services/metrics` and `services/auth` writers use a non-canonical `flg_entries` (`id, level, message, context, created_at`), and the JS writer uses a raw SQL `INSERT`. Align it to the canonical `flg_entries` schema and pg8000 driver in ArcPlatform-BluePrint `REGISTRY.md` → Shared Infrastructure, then delete this section.
+
 ## Architecture
 
 Microservices with Domain-Driven Design:
